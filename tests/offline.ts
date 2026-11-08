@@ -238,5 +238,82 @@ console.log("\n# statements render the package's own business");
   ok("business statement is a pdf", business.blob?.type, "application/pdf");
 }
 
+console.log("\n# profile and password");
+{
+  call("POST", "setup/demo", { edition: "classic" });
+  const { actor } = signIn("classic");
+
+  const me = call("GET", "auth/profile", undefined, actor).body.user;
+  ok("profile reads back the signed-in account", me.email, "admin@classic.demo");
+  ok("profile never returns a password", "password" in me, false);
+
+  // Details: name and phone need no password.
+  const named = call("PATCH", "auth/profile", { name: "Renamed Admin", phone: "+256700999999" }, actor).body.user;
+  ok("name is saved", named.name, "Renamed Admin");
+  ok("phone is saved", named.phone, "+256700999999");
+
+  // Email is the sign-in identity, so it needs the current password.
+  const noPw = call("PATCH", "auth/profile", { email: "moved@classic.demo" }, actor);
+  ok("email change without the password is refused", noPw.status, 400);
+  const wrongPw = call("PATCH", "auth/profile", { email: "moved@classic.demo", current_password: "nope" }, actor);
+  ok("email change with a wrong password is refused", wrongPw.status, 403);
+  const moved = call("PATCH", "auth/profile", { email: "moved@classic.demo", current_password: "Classic#1234" }, actor);
+  ok("email change with the right password is accepted", moved.status, 200);
+  ok("email is saved", moved.body.user.email, "moved@classic.demo");
+  const dupe = call("PATCH", "auth/profile", { email: "staff@classic.demo", current_password: "Classic#1234" }, actor);
+  ok("email already in use is refused", dupe.status, 409);
+  // Put the sign-in name back so later blocks keep working.
+  call("PATCH", "auth/profile", { email: "admin@classic.demo", current_password: "Classic#1234" }, actor);
+
+  // Password change.
+  const wrongCurrent = call("POST", "auth/password", { current_password: "nope", new_password: "BrandNew#2026" }, actor);
+  ok("wrong current password is refused", wrongCurrent.status, 403);
+  const tooShort = call("POST", "auth/password", { current_password: "Classic#1234", new_password: "short" }, actor);
+  ok("a short new password is refused", tooShort.status, 400);
+  const same = call("POST", "auth/password", { current_password: "Classic#1234", new_password: "Classic#1234" }, actor);
+  ok("reusing the same password is refused", same.status, 400);
+
+  const changed = call("POST", "auth/password", { current_password: "Classic#1234", new_password: "BrandNew#2026" }, actor);
+  ok("the password changes", changed.status, 200);
+  ok("a fresh token is issued", typeof changed.body.token, "string");
+  ok("the change is stamped", Boolean(call("GET", "auth/profile", undefined, actor).body.user.password_changed_at), true);
+
+  // Sign in with the new password, and no longer with the old one.
+  const withNew = call("POST", "auth/login", { login: "admin@classic.demo", password: "BrandNew#2026" });
+  ok("the new password signs in", withNew.status, 200);
+  const withOld = call("POST", "auth/login", { login: "admin@classic.demo", password: "Classic#1234" });
+  ok("the old password no longer signs in", withOld.status, 401);
+
+  // Leave the demo account on its documented password for the next run.
+  const { actor: restored } = { actor: { id: withNew.body.user.id, name: withNew.body.user.name } };
+  call("POST", "auth/password", { current_password: "BrandNew#2026", new_password: "Classic#1234" }, restored);
+  const back = call("POST", "auth/login", { login: "admin@classic.demo", password: "Classic#1234" });
+  ok("the documented demo password works again", back.status, 200);
+}
+
+console.log("\n# admin resets another account's password");
+{
+  call("POST", "setup/demo", { edition: "classic" });
+  const { actor } = signIn("classic");
+  const staff = call("GET", "admin/users", undefined, actor).body.users.find((u: any) => u.role === "staff");
+  const reset = call("POST", `admin/users/${staff.id}/reset-password`, {}, actor);
+  ok("reset returns a password once", typeof reset.body.password, "string");
+  ok("reset targets the right account", reset.body.email, staff.email);
+  const signInReset = call("POST", "auth/login", { login: staff.email, password: reset.body.password });
+  ok("the issued password signs in", signInReset.status, 200);
+}
+
+console.log("\n# a wrong password is an error, not an ended session");
+{
+  call("POST", "setup/demo", { edition: "classic" });
+  const bad = call("POST", "auth/login", { login: "admin@classic.demo", password: "wrong" });
+  ok("a wrong password is 401", bad.status, 401);
+  ok("the reason is about the credentials", bad.body.error, "That email or password is not right.");
+  // The client only redirects to /login?expired=1 when a token was sent, so a
+  // failed sign-in must carry no token - otherwise the form swallows the reason.
+  const noToken = call("POST", "auth/login", { login: "admin@classic.demo", password: "wrong" }, undefined);
+  ok("sign-in without a token still reports 401", noToken.status, 401);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) Deno.exit(1);

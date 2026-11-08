@@ -99,9 +99,9 @@ function AdminPanels() {
         <NewStaff onDone={() => { users.refresh(); overview.refresh(); toast({ tone: "success", text: "Account created." }); }} />
         {users.loading && !users.data ? <Spinner label="Loading accounts" /> : (
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[40rem]">
+            <table className="w-full min-w-[44rem]">
               <thead>
-                <tr className="border-b border-sand-200"><th className="th">Name</th><th className="th">Email</th><th className="th">Role</th><th className="th">Last sign-in</th><th className="th">Active</th></tr>
+                <tr className="border-b border-sand-200"><th className="th">Name</th><th className="th">Email</th><th className="th">Role</th><th className="th">Last sign-in</th><th className="th">Active</th><th className="th">Password</th></tr>
               </thead>
               <tbody className="divide-y divide-sand-100">
                 {users.data?.users.map((u) => (
@@ -111,6 +111,9 @@ function AdminPanels() {
                     <td className="td capitalize">{u.role}</td>
                     <td className="td text-ink-mute">{u.last_login_at ? formatDate(String(u.last_login_at).slice(0, 10)) : "never"}</td>
                     <td className="td">{u.is_active ? "Yes" : "No"}</td>
+                    <td className="td">
+                      <ResetPassword user={u} onDone={(msg) => toast({ tone: "success", text: msg })} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -280,6 +283,35 @@ function openEmail(n: NotifyRow) {
   if (!w) return;
   w.document.write(n.html || `<pre style="font:13px/1.6 ui-monospace,monospace;padding:24px;white-space:pre-wrap">${n.body}</pre>`);
   w.document.close();
+}
+
+function ResetPassword({ user, onDone }: { user: { id: string; email: string | null }; onDone: (msg: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [issued, setIssued] = useState<string | null>(null);
+
+  async function reset() {
+    if (!window.confirm(`Set a new password for ${user.email}? They will be signed out and must use the new one.`)) return;
+    setBusy(true);
+    try {
+      const r = await api<{ password: string }>(`/admin/users/${user.id}/reset-password`, { method: "POST" });
+      setIssued(r.password);
+      onDone(`New password for ${user.email} set.`);
+    } catch (err) {
+      onDone((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (issued) {
+    return (
+      <div className="flex flex-col gap-1">
+        <code className="rounded bg-sand-100 px-2 py-1 font-mono text-xs">{issued}</code>
+        <span className="text-[11px] text-ink-mute">Write it down - shown once.</span>
+      </div>
+    );
+  }
+  return <button className="btn-ghost text-xs" onClick={reset} disabled={busy}>{busy ? "..." : "Reset"}</button>;
 }
 
 function NewStaff({ onDone }: { onDone: () => void }) {

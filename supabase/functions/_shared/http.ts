@@ -1,7 +1,7 @@
 import type { Context, MiddlewareHandler } from "npm:hono@4.6.14";
 import { toISOStamp } from "./domain/dates.ts";
 import { sql, type Row } from "./db.ts";
-import { verifyJwt } from "./crypto.ts";
+import { verifyJwt, epochOf } from "./crypto.ts";
 import type { Role } from "./domain/types.ts";
 
 export type AppUser = { id: string; role: Role; name: string; email: string | null; phone: string | null; is_active: boolean; last_login_at: string | null; created_at: string };
@@ -16,8 +16,14 @@ export async function userFromToken(token: string | undefined | null): Promise<A
   if (!token) return null;
   const p = await verifyJwt(token);
   if (!p?.sub || p.typ !== "user") return null;
-  const [u] = await sql`select id, role, name, email, phone, is_active, last_login_at, created_at from users where id = ${p.sub} and is_active`;
-  return (u as AppUser) ?? null;
+  const [u] = await sql`select id, role, name, email, phone, is_active, last_login_at, created_at, password_changed_at from users where id = ${p.sub} and is_active`;
+  if (!u) return null;
+  // A password change invalidates tokens minted before it: their `pwd` claim no
+  // longer matches the stamp. A null stamp means the password was never changed,
+  // so every token stays valid.
+  const stamp = epochOf(u.password_changed_at);
+  if (stamp !== null && p.pwd !== stamp) return null;
+  return u as AppUser;
 }
 
 export const bearer = (c: Context) => {

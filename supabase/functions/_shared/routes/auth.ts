@@ -1,7 +1,7 @@
 import { Hono } from "npm:hono@4.6.14";
 import { sql } from "../db.ts";
 import { auth, fail, publicUser, readJson, str, type Env } from "../http.ts";
-import { hashPassword, signJwt, verifyPassword } from "../crypto.ts";
+import { hashPassword, signJwt, verifyPassword, epochOf } from "../crypto.ts";
 import { audit } from "../audit.ts";
 import { env } from "../env.ts";
 import { businessProfile, currentEdition } from "../settings.ts";
@@ -31,7 +31,7 @@ authRoutes.post("/auth/login", async (c) => {
   await audit(u.id, "auth.login", "user", u.id, {});
   const edition = await currentEdition();
   return c.json({
-    token: await signJwt({ sub: u.id, role: u.role, typ: "user" }),
+    token: await signJwt({ sub: u.id, role: u.role, typ: "user", pwd: epochOf(u.password_changed_at) }),
     user: publicUser({ ...u, last_login_at: new Date().toISOString() }),
     edition,
     capabilities: editionCapabilities(edition),

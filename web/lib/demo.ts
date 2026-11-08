@@ -34,7 +34,7 @@ export interface DemoState {
   /** ISO day the system was handed over; starts the customer-email window. */
   handover_on: string | null;
   notifications: DemoNotification[];
-  staff: { id: string; name: string; email: string; phone: string; role: "admin" | "staff"; password: string; is_active?: boolean; last_login_at?: string | null }[];
+  staff: { id: string; name: string; email: string; phone: string; role: "admin" | "staff"; password: string; is_active?: boolean; last_login_at?: string | null; password_changed_at?: string | null }[];
   customers: Customer[];
   transactions: Transaction[];
   corrections: DemoCorrection[];
@@ -101,7 +101,26 @@ export function resetState(edition: Edition): DemoState {
   return s;
 }
 
+/**
+ * The accounts shown on the sign-in page, with the passwords currently stored.
+ * A password changed from Profile, or reset by an administrator, must be the one
+ * the quick-fill buttons offer - otherwise the demo fights the user.
+ */
+export function currentDemoAccounts(edition: Edition): { edition: Edition; role: "admin" | "staff"; name: string; login: string; password: string; business: string }[] {
+  const s = loadState();
+  if (s.edition !== edition || !s.staff?.length) return demoAccounts(edition);
+  return s.staff.map((u) => ({ edition, role: u.role, name: u.name, login: u.email, password: u.password, business: s.profile.name }));
+}
+
 const uuid = () => "xxxxxxxx-xxxx-4xxx-axxx-xxxxxxxxxxxx".replace(/x/g, () => Math.floor(Math.random() * 16).toString(16));
+
+/** Mirrors randomCode(10) + "#1" in _shared/crypto.ts. */
+function randomPassword() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let s = "";
+  for (let i = 0; i < 10; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)];
+  return s + "#1";
+}
 
 function withNames(s: DemoState, t: Transaction): Transaction {
   const c = s.customers.find((x) => x.id === t.customer_id);
@@ -110,6 +129,16 @@ function withNames(s: DemoState, t: Transaction): Transaction {
 }
 
 const live = (txs: Transaction[]) => txs.filter((t) => !t.voided_at);
+
+/** The staff row the current actor is acting as. */
+function self(s: DemoState, actor?: Actor) {
+  return s.staff.find((u) => u.id === actor?.id) ?? s.staff.find((u) => u.role === "admin") ?? s.staff[0];
+}
+
+/** A staff row as the API returns it - never the password. */
+function publicStaff(u: DemoState["staff"][number], s: DemoState) {
+  return { id: u.id, name: u.name, email: u.email, phone: u.phone, role: u.role, is_active: u.is_active !== false, last_login_at: u.last_login_at ?? null, created_at: s.generated_at, password_changed_at: u.password_changed_at ?? null };
+}
 
 function totals(s: DemoState) {
   const b = balances(s.transactions);
@@ -190,9 +219,12 @@ export function handle(method: string, path: string, body: any, actor?: Actor): 
 
   if (route === "auth/login" && method === "POST") {
     const email = String(body?.login ?? "").toLowerCase();
+    // Prefer the stored accounts: a password or email changed from the Profile
+    // page lives there, and the static list would still hold the old value.
+    const stored = s.staff.find((x) => x.email.toLowerCase() === email && x.password === body?.password);
     // A demo account may belong to a different package than the one currently
-    // loaded, so look the credentials up across every package and switch if needed.
-    const account = EDITIONS.flatMap((e) => demoAccounts(e)).find(
+    // loaded, so fall back to looking the credentials up across every package.
+    const account = stored ? null : EDITIONS.flatMap((e) => demoAccounts(e)).find(
       (a) => a.login.toLowerCase() === email && a.password === body?.password,
     );
     if (account && account.edition !== s.edition) {
@@ -200,7 +232,7 @@ export function handle(method: string, path: string, body: any, actor?: Actor): 
       s.staff = switched.staff; s.customers = switched.customers; s.transactions = switched.transactions;
       s.profile = switched.profile; s.edition = switched.edition;
     }
-    const u = s.staff.find((x) => x.email.toLowerCase() === email && x.password === body?.password);
+    const u = stored ?? s.staff.find((x) => x.email.toLowerCase() === email && x.password === body?.password);
     if (!u) return err(401, "That email or password is not right.");
     if (u.is_active === false) return err(403, "That account has been switched off.", "forbidden");
     u.last_login_at = new Date().toISOString();
@@ -212,6 +244,45 @@ export function handle(method: string, path: string, body: any, actor?: Actor): 
     return ok({ user: { ...u, is_active: true, last_login_at: null, created_at: s.generated_at }, edition, capabilities: caps, business: s.profile });
   }
   if (route === "auth/logout") return ok({ ok: true });
+
+  // The signed-in user's own account. Mirrors routes/profile.ts on the server.
+  if (route === "auth/profile") {
+    const u = self(s, actor);
+    if (!u) return err(401, "Please sign in again.", "unauthenticated");
+    if (method === "GET") return ok({ user: publicStaff(u, s), edition, capabilities: caps, business: s.profile });
+    if (method === "PATCH") {
+      const wantsEmail = body?.email !== undefined && String(body.email).trim().toLowerCase() !== u.email.toLowerCase();
+      if (wantsEmail) {
+        const email = String(body.email).trim().toLowerCase();
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return err(400, "That does not look like an email address.", "validation");
+        if (!body?.current_password) return err(400, "current password is required", "validation");
+        if (body.current_password !== u.password) return err(403, "That is not your current password.", "bad_password");
+        if (s.staff.some((x) => x.id !== u.id && x.email.toLowerCase() === email)) return err(409, "Another account already uses that email.", "conflict");
+        u.email = email;
+      }
+      if (body?.name !== undefined) {
+        const name = String(body.name).trim();
+        if (name.length < 2) return err(400, "name is too short", "validation");
+        u.name = name;
+      }
+      if (body?.phone !== undefined) u.phone = String(body.phone);
+      saveState(s);
+      return ok({ user: publicStaff(u, s) });
+    }
+  }
+  if (route === "auth/password" && method === "POST") {
+    const u = self(s, actor);
+    if (!u) return err(401, "Please sign in again.", "unauthenticated");
+    const current = String(body?.current_password ?? "");
+    const next = String(body?.new_password ?? "");
+    if (current !== u.password) return err(403, "That is not your current password.", "bad_password");
+    if (next.length < 8) return err(400, "new password is too short", "validation");
+    if (next === current) return err(400, "Choose a password you have not used here before.", "validation");
+    u.password = next;
+    u.password_changed_at = new Date().toISOString();
+    saveState(s);
+    return ok({ ok: true, token: "demo." + u.id, message: "Password changed. Other devices have been signed out." });
+  }
 
   if (route === "setup/status") {
     return ok({ service: "credit-savings", edition, editions: Object.values(EDITION_META), business: s.profile, users: s.staff.length, demo_mode: true, can_seed: false, capabilities: caps, offline: true });
@@ -457,6 +528,17 @@ export function handle(method: string, path: string, body: any, actor?: Actor): 
       });
     }
     if (parts[1] === "users") {
+      // Reset someone's password to a fresh random one, returned once. Must be
+      // matched before the `/users/:id` PATCH below, which is also parts.length 3.
+      if (parts.length === 4 && parts[3] === "reset-password" && method === "POST") {
+        const target = s.staff.find((x) => x.id === parts[2]);
+        if (!target) return err(404, "That account was not found.", "not_found");
+        const password = randomPassword();
+        target.password = password;
+        target.password_changed_at = new Date().toISOString();
+        saveState(s);
+        return ok({ ok: true, email: target.email, password });
+      }
       if (method === "GET") return ok({ users: s.staff.map((u) => ({ ...u, is_active: u.is_active !== false, last_login_at: u.last_login_at ?? null, created_at: s.generated_at })) });
       if (method === "POST") {
         const email = String(body.email ?? "").trim().toLowerCase();
@@ -473,9 +555,15 @@ export function handle(method: string, path: string, body: any, actor?: Actor): 
         if (typeof body?.is_active === "boolean") target.is_active = body.is_active;
         if (body?.name) target.name = String(body.name);
         if (body?.role) target.role = body.role === "admin" ? "admin" : "staff";
-        if (body?.password) target.password = String(body.password);
+        if (body?.password) { target.password = String(body.password); target.password_changed_at = new Date().toISOString(); }
+        if (body?.email !== undefined) {
+          const email = String(body.email).trim().toLowerCase();
+          if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return err(400, "That does not look like an email address.", "validation");
+          if (s.staff.some((x) => x.id !== target.id && x.email.toLowerCase() === email)) return err(409, "Another account already uses that email.", "conflict");
+          target.email = email;
+        }
         saveState(s);
-        return ok({ user: { ...target, is_active: target.is_active !== false, last_login_at: target.last_login_at ?? null, created_at: s.generated_at } });
+        return ok({ user: publicStaff(target, s) });
       }
     }
     if (parts[1] === "settings" && method === "GET") {

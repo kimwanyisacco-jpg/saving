@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { LogIn } from "lucide-react";
 import { Brand, Card, Field, Notice, Spinner } from "@/components/ui";
 import { api, OFFLINE, setSession } from "@/lib/api";
+import { currentDemoAccounts } from "@/lib/demo";
 import { EDITION_META, EDITIONS } from "../../../supabase/functions/_shared/domain/editions";
-import { demoAccounts } from "../../../supabase/functions/_shared/domain/demo";
 import type { Edition } from "../../../supabase/functions/_shared/domain/types";
 
 export default function Login() {
@@ -37,7 +37,7 @@ export default function Login() {
   }
 
   function useAccount(edition: Edition, role: string) {
-    const a = demoAccounts(edition).find((x) => x.role === role) ?? demoAccounts(edition)[0];
+    const a = currentDemoAccounts(edition).find((x) => x.role === role) ?? currentDemoAccounts(edition)[0];
     setLogin(a.login);
     setPassword(a.password);
     setError(null);
@@ -88,7 +88,7 @@ export default function Login() {
                 {EDITIONS.map((edition) => (
                   <div key={edition} className="flex flex-wrap items-center gap-2">
                     <span className="w-20 text-xs font-semibold text-ink-soft">{EDITION_META[edition].name}</span>
-                    {demoAccounts(edition).map((a) => (
+                    {currentDemoAccounts(edition).map((a) => (
                       <button key={a.login} type="button" className="btn-secondary px-2.5 py-1 text-xs" onClick={() => useAccount(edition, a.role)}>
                         {a.role} · {a.login}
                       </button>

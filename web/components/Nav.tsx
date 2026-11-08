@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { EditionCapabilities } from "../../supabase/functions/_shared/domain/editions";
-import { LayoutDashboard, Users, ArrowLeftRight, FileBarChart, Upload, Settings, Lock } from "lucide-react";
+import { LayoutDashboard, Users, ArrowLeftRight, FileBarChart, Upload, Settings, Lock, UserCircle } from "lucide-react";
 
 interface Item { href: string; label: string; icon: React.ReactNode; show: boolean; locked?: boolean }
 
@@ -15,6 +15,7 @@ export function Nav({ caps, role }: { caps: EditionCapabilities; role: "admin" |
     { href: "/reports/", label: "Reports", icon: <FileBarChart className="h-4 w-4" />, show: true, locked: !caps.reports },
     { href: "/import/", label: "Import", icon: <Upload className="h-4 w-4" />, show: true, locked: !caps.import },
     { href: "/admin/", label: "Admin", icon: <Settings className="h-4 w-4" />, show: role === "admin" },
+    { href: "/profile/", label: "Profile", icon: <UserCircle className="h-4 w-4" />, show: true },
   ];
   return (
     <>

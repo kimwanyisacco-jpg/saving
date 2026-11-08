@@ -34,6 +34,21 @@ admin.get("/admin/overview", async (c) => {
 
 admin.get("/admin/users", async (c) => c.json({ users: (await sql`select * from users order by created_at`).map(publicUser) }));
 
+/**
+ * Reset someone else's password to a fresh random one and return it once.
+ * This is the recovery path for a forgotten password: the hash is one-way, so
+ * no one - not even an administrator - can read the old one back.
+ */
+admin.post("/admin/users/:id/reset-password", async (c) => {
+  const id = uuid(c.req.param("id"));
+  const [u] = await sql`select id, email from users where id = ${id}`;
+  if (!u) fail(404, "That account was not found.", "not_found");
+  const password = randomCode(10) + "#1";
+  await sql`update users set password_hash = ${await hashPassword(password)}, password_changed_at = now() where id = ${id}`;
+  await audit(c.get("user").id, "admin.password_reset", "user", id, {});
+  return c.json({ ok: true, email: u.email, password });
+});
+
 admin.post("/admin/users", async (c) => {
   const b = await readJson(c);
   const role = oneOf(b.role, "role", ["admin", "staff"] as const, "staff");
@@ -55,12 +70,21 @@ admin.patch("/admin/users/:id", async (c) => {
   const b = await readJson(c);
   if (id === c.get("user").id && b.is_active === false) fail(400, "You cannot switch off your own account.", "validation");
   if (typeof b.is_active === "boolean") await sql`update users set is_active = ${b.is_active} where id = ${id}`;
-  if (b.password) await sql`update users set password_hash = ${await hashPassword(str(b.password, "password", { min: 8, max: 200 }))} where id = ${id}`;
+  if (b.password) await sql`update users set password_hash = ${await hashPassword(str(b.password, "password", { min: 8, max: 200 }))}, password_changed_at = now() where id = ${id}`;
   if (b.name) await sql`update users set name = ${str(b.name, "name", { min: 2, max: 80 })} where id = ${id}`;
   if (b.role) await sql`update users set role = ${oneOf(b.role, "role", ["admin", "staff"] as const)} where id = ${id}`;
+  // Email is the sign-in identity. An administrator sets it here so a mistyped
+  // self-service address can be corrected without locking anyone out.
+  if (b.email !== undefined) {
+    const email = str(b.email, "email", { max: 120 }).toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) fail(400, "That does not look like an email address.", "validation");
+    const [dupe] = await sql`select 1 from users where lower(email) = ${email} and id <> ${id}`;
+    if (dupe) fail(409, "Another account already uses that email.", "conflict");
+    await sql`update users set email = ${email} where id = ${id}`;
+  }
   const [u] = await sql`select * from users where id = ${id}`;
   if (!u) fail(404, "That account was not found.", "not_found");
-  await audit(c.get("user").id, "admin.user_updated", "user", id, { is_active: b.is_active, password_reset: Boolean(b.password), role: b.role });
+  await audit(c.get("user").id, "admin.user_updated", "user", id, { is_active: b.is_active, password_reset: Boolean(b.password), role: b.role, email_changed: b.email !== undefined });
   return c.json({ user: publicUser(u) });
 });
 

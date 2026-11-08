@@ -62,6 +62,14 @@ export async function signJwt(payload: Record<string, unknown>, ttlSec = 60 * 60
   const sig = await crypto.subtle.sign("HMAC", await hmacKey(), te.encode(head + "." + body));
   return head + "." + body + "." + b64url(sig);
 }
+
+/** Seconds since the epoch for a stored timestamp, or null if it is unset.
+ *  Used to compare a token's `pwd` claim against the user's last password change. */
+export const epochOf = (v: unknown): number | null => {
+  if (!v) return null;
+  const t = new Date(String(v)).getTime();
+  return Number.isFinite(t) ? Math.floor(t / 1000) : null;
+};
 export async function verifyJwt(token: string): Promise<Record<string, any> | null> {
   const parts = token.split(".");
   if (parts.length !== 3) return null;

@@ -49,7 +49,9 @@ export async function api<T = any>(path: string, opts: Options = {}): Promise<T>
     const res = handle(method, path, opts.body, session ? { id: session.user.id, name: session.user.name } : undefined);
     if (res.blob) return res as unknown as T;
     if (res.status >= 400) {
-      if (res.status === 401) { setSession(null); if (typeof window !== "undefined") window.location.href = "/login/?expired=1"; }
+      // Only a 401 on a request that carried a token means the session ended.
+      // A 401 from sign-in (no token) is a wrong password and must reach the form.
+      if (res.status === 401 && token) { setSession(null); if (typeof window !== "undefined") window.location.href = "/login/?expired=1"; }
       throw new ApiError(res.status, res.body?.error || "Request failed", res.body?.code);
     }
     return res.body as T;

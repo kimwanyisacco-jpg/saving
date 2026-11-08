@@ -270,5 +270,63 @@ console.log("\n# statements");
   ok("business statement names the business", business.text.includes("Wakiso"), true);
 }
 
+console.log("\n# profile and password");
+{
+  // Seed once and keep both the token and the account, so the password here is
+  // the one the server actually stored.
+  const seeded = await req("POST", "/setup/demo", { body: { edition: "classic", reset: true } });
+  const account = seeded.body.accounts.find((a: any) => a.role === "admin");
+  const original = account.password;
+  const token = (await req("POST", "/auth/login", { body: { login: account.login, password: original } })).body.token;
+
+  const me = await req("GET", "/auth/profile", { token });
+  ok("profile reads back the signed-in account", me.body.user.email, account.login);
+  ok("profile never returns a password hash", "password_hash" in me.body.user, false);
+
+  const named = await req("PATCH", "/auth/profile", { token, body: { name: "Renamed Admin", phone: "+256700999999" } });
+  ok("name is saved", named.body.user.name, "Renamed Admin");
+
+  // Email is the sign-in identity, so it needs the current password.
+  const noPw = await req("PATCH", "/auth/profile", { token, body: { email: "moved@classic.demo" } });
+  ok("email change without the password is refused", noPw.status, 400);
+  const wrongPw = await req("PATCH", "/auth/profile", { token, body: { email: "moved@classic.demo", current_password: "nope" } });
+  ok("email change with a wrong password is refused", wrongPw.status, 403);
+  const moved = await req("PATCH", "/auth/profile", { token, body: { email: "moved@classic.demo", current_password: original } });
+  ok("email change with the right password is accepted", moved.status, 200);
+  ok("the new email signs in", (await req("POST", "/auth/login", { body: { login: "moved@classic.demo", password: original } })).status, 200);
+  const dupe = await req("PATCH", "/auth/profile", { token, body: { email: account.login, current_password: original } });
+  ok("changing back to the original email is accepted", dupe.status, 200);
+
+  // Password change.
+  const wrongCurrent = await req("POST", "/auth/password", { token, body: { current_password: "nope", new_password: "BrandNew#2026" } });
+  ok("wrong current password is refused", wrongCurrent.status, 403);
+  const tooShort = await req("POST", "/auth/password", { token, body: { current_password: original, new_password: "short" } });
+  ok("a short new password is refused", tooShort.status, 400);
+  const same = await req("POST", "/auth/password", { token, body: { current_password: original, new_password: original } });
+  ok("reusing the same password is refused", same.status, 400);
+
+  const changed = await req("POST", "/auth/password", { token, body: { current_password: original, new_password: "BrandNew#2026" } });
+  ok("the password changes", changed.status, 200);
+  ok("a fresh token is issued", typeof changed.body.token, "string");
+
+  // The change signs out other devices but keeps the caller signed in.
+  const oldToken = await req("GET", "/auth/me", { token });
+  ok("the old token is now refused", oldToken.status, 401);
+  const newToken = await req("GET", "/auth/me", { token: changed.body.token });
+  ok("the freshly issued token still works", newToken.status, 200);
+  ok("the new password signs in", (await req("POST", "/auth/login", { body: { login: account.login, password: "BrandNew#2026" } })).status, 200);
+  ok("the old password no longer signs in", (await req("POST", "/auth/login", { body: { login: account.login, password: original } })).status, 401);
+}
+
+console.log("\n# admin resets another account's password");
+{
+  const token = await seed("classic");
+  const staff = (await req("GET", "/admin/users", { token })).body.users.find((u: any) => u.role === "staff");
+  const reset = await req("POST", `/admin/users/${staff.id}/reset-password`, { token });
+  ok("reset returns a password once", typeof reset.body.password, "string");
+  ok("reset targets the right account", reset.body.email, staff.email);
+  ok("the issued password signs in", (await req("POST", "/auth/login", { body: { login: staff.email, password: reset.body.password } })).status, 200);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) Deno.exit(1);

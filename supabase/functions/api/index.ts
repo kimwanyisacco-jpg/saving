@@ -16,6 +16,7 @@ import { reports } from "../_shared/routes/reports.ts";
 import { statements } from "../_shared/routes/statements.ts";
 import { importRoutes } from "../_shared/routes/import.ts";
 import { admin } from "../_shared/routes/admin.ts";
+import { profileRoutes } from "../_shared/routes/profile.ts";
 
 const v1 = new Hono();
 
@@ -29,7 +30,7 @@ v1.get("/health", async (c) => {
 v1.get("/editions", (c) => c.json({ editions: Object.values(EDITION_META), features: FEATURES }));
 v1.get("/settings/public", async (c) => c.json({ business: await businessProfile(), edition: await currentEdition(), capabilities: editionCapabilities(await currentEdition()) }));
 
-for (const r of [authRoutes, customers, transactions, dashboard, reports, statements, importRoutes, admin]) {
+for (const r of [authRoutes, profileRoutes, customers, transactions, dashboard, reports, statements, importRoutes, admin]) {
   v1.route("/", r as unknown as Hono);
 }
 
