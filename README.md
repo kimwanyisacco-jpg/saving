@@ -24,6 +24,14 @@ not messaged. The window is counted from handover - Classic 1 month (30 days),
 Enhanced 2 months (60 days) - and lives as `notify_days` on the edition beside
 `support_days`.
 
+Each message carries a branded HTML body and a plain-text fallback. The HTML is
+built by `_shared/domain/emailHtml.ts` and mirrors the printed statement header -
+the business's own name, contact details and logo initials on the brand green -
+so an email and a statement look like they came from the same office. It uses
+table layout and inline styles only, which is what mail clients render reliably.
+Every value that comes from a user (names, notes) is escaped before it reaches
+the markup.
+
 Sending goes through [Resend](https://resend.com). Set `RESEND_API_KEY` and
 `MAIL_FROM` on the Edge Function; with no key the message is still written to the
 outbox as `skipped`, so the presentation shows what would have gone out. Every

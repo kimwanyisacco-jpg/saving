@@ -13,13 +13,15 @@ export interface SendResult { status: "sent" | "failed" | "skipped"; provider: s
 
 export const mailConfigured = () => Boolean(env.resendApiKey && env.mailFrom);
 
-export async function sendEmail(to: string, subject: string, text: string): Promise<SendResult> {
+export async function sendEmail(to: string, subject: string, text: string, html?: string): Promise<SendResult> {
   if (!mailConfigured()) return { status: "skipped", provider: "none", error: "Email is not configured (set RESEND_API_KEY and MAIL_FROM)." };
   try {
+    // html is the branded body; text is the fallback for clients that ask for it.
+    const body = html ? { from: env.mailFrom, to: [to], subject, html, text } : { from: env.mailFrom, to: [to], subject, text };
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { authorization: `Bearer ${env.resendApiKey}`, "content-type": "application/json" },
-      body: JSON.stringify({ from: env.mailFrom, to: [to], subject, text }),
+      body: JSON.stringify(body),
     });
     if (!r.ok) {
       const detail = await r.text().catch(() => "");

@@ -166,18 +166,38 @@ console.log("\n# customer email notifications");
   ok("deposit queues a receipt", out.notifications.length, 2);
   ok("receipt is the newest", out.notifications[0].kind, "transaction_recorded");
   ok("receipt names the amount", out.notifications[0].body.includes("UGX 5,000"), true);
+  // The message carries a branded HTML body and a plain-text fallback, and both
+  // say the same thing.
+  ok("the message is branded html", out.notifications[0].html.includes("<!doctype html>"), true);
+  // The business name contains "&", which is escaped in html - as it must be.
+  ok("the html names the business", out.notifications[0].html.includes("Kampala Community Savings &amp; Credit"), true);
+  ok("the html shows the amount", out.notifications[0].html.includes("UGX 5,000"), true);
+  ok("the html is a receipt", out.notifications[0].html.includes("Keep this message as your receipt."), true);
+  ok("the plain text is a receipt too", out.notifications[0].body.includes("Keep this message as your receipt."), true);
   ok("the window is open on Classic", out.status.open, true);
   ok("the window closes 30 days after handover", out.status.window_ends_on.slice(0, 4), out.status.handover_on.slice(0, 4));
 
+  // A name is user input. Markup in it must be escaped in the html body.
+  const { customerWelcome } = await import("../supabase/functions/_shared/domain/notify.ts");
+  const { esc } = await import("../supabase/functions/_shared/domain/emailHtml.ts");
+  ok("esc escapes a tag", esc("<script>alert(1)</script>"), "&lt;script&gt;alert(1)&lt;/script&gt;");
+  ok("esc escapes an ampersand", esc("Kaggwa & Sons"), "Kaggwa &amp; Sons");
+  const hostile = call("POST", "customers", { name: "<b>Bold</b> & Co", email: "hostile@example.com" }, actor).body.customer;
+  const hostileMsg = call("GET", "admin/notifications", undefined, actor).body.notifications[0];
+  ok("a hostile name is escaped in html", hostileMsg.html.includes("&lt;b&gt;Bold&lt;/b&gt; &amp; Co"), true);
+  ok("a hostile name is not raw html", hostileMsg.html.includes("<b>Bold</b>"), false);
+  ok("the plain text keeps the name as written", hostileMsg.body.includes("<b>Bold</b> & Co"), true);
+  void hostile; void customerWelcome;
+
   // A customer with no email is simply not messaged.
   call("POST", "customers", { name: "No Email" }, actor);
-  ok("customer without an email gets nothing", call("GET", "admin/notifications", undefined, actor).body.notifications.length, 2);
+  ok("customer without an email gets nothing", call("GET", "admin/notifications", undefined, actor).body.notifications.length, 3);
 
   // Moving the handover date forward closes the window.
   call("PUT", "admin/settings", { handover_on: "2020-01-01" }, actor);
   ok("an old handover closes the window", call("GET", "admin/notifications", undefined, actor).body.status.open, false);
   call("POST", "transactions", { customer_id: created.id, kind: "savings_deposit", amount: 1000, occurred_on: "2026-11-02" }, actor);
-  ok("nothing is sent once closed", call("GET", "admin/notifications", undefined, actor).body.notifications.length, 2);
+  ok("nothing is sent once closed", call("GET", "admin/notifications", undefined, actor).body.notifications.length, 3);
 }
 
 console.log("\n# import keeps the file's reference");

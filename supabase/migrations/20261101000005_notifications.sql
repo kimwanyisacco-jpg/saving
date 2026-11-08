@@ -12,6 +12,7 @@ create table if not exists notification_outbox (
   recipient      text not null,
   subject        text not null,
   body           text not null,
+  html           text,
   provider       text not null default 'none',
   status         text not null default 'queued' check (status in ('queued','sent','failed','skipped')),
   error          text,
@@ -19,6 +20,9 @@ create table if not exists notification_outbox (
   created_at     timestamptz not null default now(),
   sent_at        timestamptz
 );
+-- Older installs of this migration predate the branded body; add it if missing.
+alter table notification_outbox add column if not exists html text;
+
 create index if not exists notification_outbox_created_idx on notification_outbox (created_at desc);
 create index if not exists notification_outbox_customer_idx on notification_outbox (customer_id, created_at desc);
 create index if not exists notification_outbox_pending_idx on notification_outbox (created_at) where status in ('queued','failed');

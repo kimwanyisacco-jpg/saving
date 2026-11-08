@@ -12,7 +12,7 @@ import { notifyDays } from "../../supabase/functions/_shared/domain/editions";
 import { addMonths, today, toISODate } from "../../supabase/functions/_shared/domain/dates";
 import type { BusinessProfile, Customer, Edition, Transaction, TxKind, TxMethod } from "../../supabase/functions/_shared/domain/types";
 
-const KEY = "credit-savings.demo.v4";
+const KEY = "credit-savings.demo.v5";
 
 export interface DemoCorrection {
   id: string; transaction_id: string; action: "void" | "restore" | "amend";
@@ -22,7 +22,7 @@ export interface DemoCorrection {
 
 export interface DemoNotification {
   id: string; kind: "customer_registered" | "transaction_recorded";
-  recipient: string; subject: string; body: string;
+  recipient: string; subject: string; body: string; html: string;
   status: "queued" | "sent" | "failed" | "skipped";
   customer_name: string | null; customer_code: string | null;
   created_at: string; sent_at: string | null;
@@ -142,7 +142,9 @@ function nextReceiptSeq(s: DemoState) {
  *  the server records it in the outbox, so the presentation can show the inbox. */
 function notifyCustomer(s: DemoState, build: (ctx: Parameters<typeof customerWelcome>[0]) => ReturnType<typeof customerWelcome>) {
   const ctx = {
-    business_name: s.profile.name, business_phone: s.profile.phone, business_email: s.profile.email,
+    business_name: s.profile.name, business_address: s.profile.address,
+    business_phone: s.profile.phone, business_email: s.profile.email,
+    business_logo_text: s.profile.logo_text,
     edition: s.edition, handover_on: s.handover_on, today: today(),
   };
   if (!notificationsOpen(ctx)) return;
@@ -150,14 +152,14 @@ function notifyCustomer(s: DemoState, build: (ctx: Parameters<typeof customerWel
   if (!msg) return;
   const c = s.customers.find((x) => x.id === msg.customer_id);
   s.notifications.unshift({
-    id: uuid(), kind: msg.kind, recipient: msg.to, subject: msg.subject, body: msg.text,
+    id: uuid(), kind: msg.kind, recipient: msg.to, subject: msg.subject, body: msg.text, html: msg.html,
     status: "sent", customer_name: c?.name ?? null, customer_code: c?.code ?? null,
     created_at: new Date().toISOString(), sent_at: new Date().toISOString(),
   });
 }
 
 function notificationStatus(s: DemoState) {
-  const ctx = { business_name: s.profile.name, business_phone: s.profile.phone, business_email: s.profile.email, edition: s.edition, handover_on: s.handover_on, today: today() };
+  const ctx = { business_name: s.profile.name, business_address: s.profile.address, business_phone: s.profile.phone, business_email: s.profile.email, business_logo_text: s.profile.logo_text, edition: s.edition, handover_on: s.handover_on, today: today() };
   return {
     open: notificationsOpen(ctx),
     configured: true,

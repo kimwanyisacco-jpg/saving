@@ -193,6 +193,9 @@ console.log("\n# customer email notifications");
   ok("registration message goes to the customer", out.notifications[0].recipient, "notify@example.com");
   ok("registration message names the number", out.notifications[0].subject.includes(created.code), true);
   ok("no mail provider is configured locally", out.notifications[0].status, "skipped");
+  ok("the message carries a branded html body", out.notifications[0].html.includes("<!doctype html>"), true);
+  ok("the branded body is a receipt", out.notifications[0].html.includes("Keep this message as your receipt."), true);
+  ok("the plain text fallback is a receipt too", out.notifications[0].body.includes("Keep this message as your receipt."), true);
 
   await req("POST", "/transactions", { token, body: { customer_id: created.id, kind: "savings_deposit", amount: 5000, occurred_on: "2026-11-02" } });
   out = (await req("GET", "/admin/notifications", { token })).body;

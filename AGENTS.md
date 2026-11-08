@@ -57,6 +57,11 @@ API_URL=http://localhost:8000 deno run -A tests/e2e.ts
   Classic 1, Enhanced 2, Basic none. `notify_days` on the edition is the single
   source of truth (30/60), and the window is counted from the `handover_on`
   setting, not from the transaction date.
+- A customer message carries two bodies: branded HTML from
+  `_shared/domain/emailHtml.ts`, and a plain-text fallback that reads well on its
+  own. The HTML mirrors the statement header and uses table layout with inline
+  styles only - no `<style>` block, because mail clients strip it. Escape every
+  user-supplied value through `esc()` before it reaches the markup.
 - Every message to a customer is built by `_shared/domain/notify.ts` (pure) and
   written to `notification_outbox` by `_shared/notifications.ts` before sending
   through Resend (`_shared/mail.ts`). A failed send is recorded, never thrown -

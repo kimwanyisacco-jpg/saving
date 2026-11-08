@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Database, Download, Mail, RefreshCw, Save, UserPlus } from "lucide-react";
+import { Database, Download, Mail, RefreshCw, Save, UserPlus, Eye } from "lucide-react";
 import { Authed } from "@/components/Authed";
 import { Card, EditionBadge, Field, Notice, Spinner, Tile, Upgrade, useToast } from "@/components/ui";
 import { useApi } from "@/lib/useApi";
@@ -22,7 +22,7 @@ interface NotifyStatus {
 
 interface NotifyRow {
   id: string; kind: "customer_registered" | "transaction_recorded";
-  recipient: string; subject: string; body: string;
+  recipient: string; subject: string; body: string; html: string | null;
   status: "queued" | "sent" | "failed" | "skipped"; provider: string; error: string | null;
   customer_name: string | null; customer_code: string | null;
   created_at: string; sent_at: string | null;
@@ -243,7 +243,7 @@ function CustomerEmailsPanel({ data, loading, onSaved, toast }: {
             <div className="mt-3 max-h-80 overflow-auto rounded-xl border border-sand-200">
               <table className="w-full min-w-[34rem]">
                 <thead className="sticky top-0 bg-sand-50">
-                  <tr className="border-b border-sand-200"><th className="th">Sent to</th><th className="th">Subject</th><th className="th">Status</th></tr>
+                  <tr className="border-b border-sand-200"><th className="th">Sent to</th><th className="th">Subject</th><th className="th">Status</th><th className="th"></th></tr>
                 </thead>
                 <tbody className="divide-y divide-sand-100">
                   {rows.map((n) => (
@@ -257,6 +257,11 @@ function CustomerEmailsPanel({ data, loading, onSaved, toast }: {
                         <span className="capitalize">{n.status}</span>
                         {n.error && <span className="block text-xs text-ink-mute">{n.error}</span>}
                       </td>
+                      <td className="td text-right">
+                        <button className="btn-ghost" onClick={() => openEmail(n)} title="View the email the customer received">
+                          <Eye className="h-4 w-4" /> View
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -267,6 +272,14 @@ function CustomerEmailsPanel({ data, loading, onSaved, toast }: {
       </div>
     </Card>
   );
+}
+
+/** Shows the exact html the customer received, in a new tab. */
+function openEmail(n: NotifyRow) {
+  const w = window.open("", "_blank");
+  if (!w) return;
+  w.document.write(n.html || `<pre style="font:13px/1.6 ui-monospace,monospace;padding:24px;white-space:pre-wrap">${n.body}</pre>`);
+  w.document.close();
 }
 
 function NewStaff({ onDone }: { onDone: () => void }) {

@@ -14,8 +14,10 @@ async function context(): Promise<NotifyContext> {
   const s = await allSettings();
   return {
     business_name: s.business_name,
+    business_address: s.business_address,
     business_phone: s.business_phone,
     business_email: s.business_email,
+    business_logo_text: s.business_logo_text,
     edition: await currentEdition(),
     handover_on: s.handover_on || null,
     today: today(),
@@ -39,11 +41,11 @@ export async function notificationStatus() {
 
 /** Write the message to the outbox, then try to send it and record the outcome. */
 async function deliver(msg: Message): Promise<"sent" | "failed" | "skipped"> {
-  const result = await sendEmail(msg.to, msg.subject, msg.text);
+  const result = await sendEmail(msg.to, msg.subject, msg.text, msg.html);
   const [row] = await sql`
-    insert into notification_outbox (kind, customer_id, transaction_id, recipient, subject, body, provider, status, error, attempts, sent_at)
+    insert into notification_outbox (kind, customer_id, transaction_id, recipient, subject, body, html, provider, status, error, attempts, sent_at)
     values (${msg.entry.kind}, ${msg.entry.customer_id}, ${msg.entry.transaction_id}, ${msg.entry.recipient},
-            ${msg.entry.subject}, ${msg.entry.body}, ${result.provider}, ${result.status}, ${result.error}, 1,
+            ${msg.entry.subject}, ${msg.entry.body}, ${msg.entry.html}, ${result.provider}, ${result.status}, ${result.error}, 1,
             ${result.status === "sent" ? sql`now()` : null})
     returning id`;
   if (result.status === "failed") console.error("notification failed", msg.to, result.error);
@@ -78,7 +80,7 @@ export async function listNotifications(limit = 100) {
     order by n.created_at desc
     limit ${Math.min(Math.max(limit, 1), 500)}`;
   return rows.map((r) => ({
-    id: r.id, kind: r.kind, recipient: r.recipient, subject: r.subject, body: r.body,
+    id: r.id, kind: r.kind, recipient: r.recipient, subject: r.subject, body: r.body, html: r.html,
     status: r.status, provider: r.provider, error: r.error,
     customer_name: r.customer_name, customer_code: r.customer_code,
     created_at: r.created_at, sent_at: r.sent_at,
