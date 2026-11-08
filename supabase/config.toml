@@ -1,0 +1,16 @@
+# Supabase CLI configuration for the Credit & Savings Records Management System.
+project_id = "credit-savings"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+
+[db]
+port = 54322
+major_version = 17
+
+[functions.api]
+# The API issues and verifies its own JWTs (roles: admin, staff), so the
+# Supabase gateway JWT check is disabled.
+verify_jwt = false
