@@ -19,6 +19,11 @@ export interface EditionMeta {
   support_days: number;
   /** Days of customer email notifications after handover. Zero means none. */
   notify_days: number;
+  /** Monthly maintenance fee after handover, if the client takes it up. */
+  maintenance_ugx: number;
+  /** Monthly fee to keep customer emails running. Compulsory for any package
+   *  that has emails, and separate from maintenance. Zero means none. */
+  email_fee_ugx: number;
 }
 
 export const EDITION_META: Record<Edition, EditionMeta> = {
@@ -26,16 +31,19 @@ export const EDITION_META: Record<Edition, EditionMeta> = {
     id: "basic", name: "Basic", tagline: "For simple record keeping",
     price_ugx: 900_000, deposit_ugx: 450_000, demo_ugx: 270_000, handover_ugx: 180_000,
     delivery_days: "5-7 working days", recommended: false, support_days: 0, notify_days: 0,
+    maintenance_ugx: 100_000, email_fee_ugx: 0,
   },
   classic: {
     id: "classic", name: "Classic", tagline: "For a growing business",
     price_ugx: 1_500_000, deposit_ugx: 750_000, demo_ugx: 450_000, handover_ugx: 300_000,
     delivery_days: "1-2 weeks", recommended: true, support_days: 30, notify_days: 30,
+    maintenance_ugx: 150_000, email_fee_ugx: 50_000,
   },
   enhanced: {
     id: "enhanced", name: "Enhanced", tagline: "For broader reporting needs",
     price_ugx: 2_300_000, deposit_ugx: 1_150_000, demo_ugx: 690_000, handover_ugx: 460_000,
     delivery_days: "2-3 weeks", recommended: false, support_days: 60, notify_days: 60,
+    maintenance_ugx: 200_000, email_fee_ugx: 50_000,
   },
 };
 
@@ -111,6 +119,8 @@ export function editionCapabilities(edition: Edition) {
     supportLabel: supportLabel(edition),
     customerEmails: notifyDays(edition) > 0,
     notifyDays: notifyDays(edition),
+    maintenanceUgx: maintenanceUgx(edition),
+    emailFeeUgx: emailFeeUgx(edition),
   };
 }
 export type EditionCapabilities = ReturnType<typeof editionCapabilities>;
@@ -124,6 +134,10 @@ export const supportDays = (e: Edition) => EDITION_META[e].support_days;
 export const notifyDays = (e: Edition) => EDITION_META[e].notify_days;
 /** The same window in whole months, which is how it is sold: 0, 1 or 2. */
 export const notifyMonths = (e: Edition) => Math.round(EDITION_META[e].notify_days / 30);
+/** Monthly maintenance fee after handover, in shillings. */
+export const maintenanceUgx = (e: Edition) => EDITION_META[e].maintenance_ugx;
+/** Monthly fee to keep customer emails running. Compulsory where emails exist. */
+export const emailFeeUgx = (e: Edition) => EDITION_META[e].email_fee_ugx;
 /** How the support term reads on a pricing page: "30 days", or "None". */
 export const supportLabel = (e: Edition) => (supportDays(e) > 0 ? `${supportDays(e)} days` : "None");
 /** The email window as the price list shows it: "1 month", "2 months", "None". */

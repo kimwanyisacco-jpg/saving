@@ -53,6 +53,11 @@ API_URL=http://localhost:8000 deno run -A tests/e2e.ts
   days, Enhanced 60, Basic none. It lives as `support_days` on the edition, not
   as a fixed feature bullet, because the term differs by package. Change it in
   `editions.ts` only; the pricing page, Admin screen and licence all read it.
+- Two running costs are quoted on the pricing pages, both on the edition:
+  `maintenance_ugx` (monthly, optional, 100k/150k/200k) and `email_fee_ugx`
+  (monthly, compulsory, 50k on Classic and Enhanced, none on Basic). The email
+  fee is separate from maintenance and must follow the email entitlement, so
+  `email_fee_ugx > 0` exactly when `notify_days > 0`.
 - Customer email notifications are a package entitlement, sold in months:
   Classic 1, Enhanced 2, Basic none. `notify_days` on the edition is the single
   source of truth (30/60), and the window is counted from the `handover_on`

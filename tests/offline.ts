@@ -29,7 +29,7 @@ const signIn = (edition: string) => {
 
 console.log("\n# package terms");
 {
-  const { EDITION_META, FEATURES, featureLabel, hasFeature, supportDays } = await import("../supabase/functions/_shared/domain/editions.ts");
+  const { EDITION_META, EDITIONS, FEATURES, featureLabel, hasFeature, notifyDays, supportDays } = await import("../supabase/functions/_shared/domain/editions.ts");
   ok("basic has no support", supportDays("basic"), 0);
   ok("classic support is 30 days", supportDays("classic"), 30);
   ok("enhanced support is 60 days", supportDays("enhanced"), 60);
@@ -43,7 +43,7 @@ console.log("\n# package terms");
   ok("enhanced lists support", hasFeature(support, "enhanced"), true);
 
   // Customer email notifications are sold in months: Classic 1, Enhanced 2.
-  const { notifyDays, notifyLabel } = await import("../supabase/functions/_shared/domain/editions.ts");
+  const { notifyLabel } = await import("../supabase/functions/_shared/domain/editions.ts");
   const emails = FEATURES.find((f) => f.key === "customer_emails")!;
   ok("basic has no email window", notifyDays("basic"), 0);
   ok("classic email window is 30 days", notifyDays("classic"), 30);
@@ -63,6 +63,17 @@ console.log("\n# package terms");
   ok("price list carries the term", EDITION_META.classic.support_days, 30);
   ok("demo licence carries the email entitlement", call("GET", "auth/me", undefined, actor).body.capabilities.customerEmails, true);
   ok("price list carries the email window", EDITION_META.classic.notify_days, 30);
+
+  // Running costs are quoted separately from the one-time build.
+  const { maintenanceUgx, emailFeeUgx } = await import("../supabase/functions/_shared/domain/editions.ts");
+  ok("basic maintenance is 100,000", maintenanceUgx("basic"), 100000);
+  ok("classic maintenance is 150,000", maintenanceUgx("classic"), 150000);
+  ok("enhanced maintenance is 200,000", maintenanceUgx("enhanced"), 200000);
+  ok("basic has no email fee", emailFeeUgx("basic"), 0);
+  ok("classic email fee is 50,000", emailFeeUgx("classic"), 50000);
+  ok("enhanced email fee is 50,000", emailFeeUgx("enhanced"), 50000);
+  // The email fee is compulsory wherever emails exist, and nowhere else.
+  ok("the email fee follows the entitlement", EDITIONS.every((e) => (emailFeeUgx(e) > 0) === (notifyDays(e) > 0)), true);
 }
 
 console.log("\n# package gates");

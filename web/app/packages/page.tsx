@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { Check, Minus } from "lucide-react";
 import { Brand, Card, EditionBadge } from "@/components/ui";
-import { EDITIONS, EDITION_META, FEATURES, includes, notifyDays, notifyLabel, supportDays, supportLabel } from "../../../supabase/functions/_shared/domain/editions";
+import { EDITIONS, EDITION_META, FEATURES, emailFeeUgx, includes, maintenanceUgx, notifyDays, notifyLabel, supportDays, supportLabel } from "../../../supabase/functions/_shared/domain/editions";
 import { formatUGX } from "@/lib/format";
 
 export default function PackagesPage() {
@@ -64,7 +64,15 @@ export default function PackagesPage() {
                     ))}
                   </tr>
                 ))}
+                <tr className="border-t-2 border-sand-300 bg-sand-50">
+                  <td className="td font-semibold">Monthly maintenance after handover</td>
+                  {EDITIONS.map((e) => <td key={e} className="num td font-semibold">{formatUGX(maintenanceUgx(e))}</td>)}
+                </tr>
                 <tr className="bg-sand-50">
+                  <td className="td font-semibold">Monthly customer-email fee (compulsory)</td>
+                  {EDITIONS.map((e) => <td key={e} className="num td font-semibold">{emailFeeUgx(e) > 0 ? formatUGX(emailFeeUgx(e)) : "Not offered"}</td>)}
+                </tr>
+                <tr className="border-t-2 border-sand-300 bg-sand-50">
                   <td className="td font-semibold">50% deposit to begin</td>
                   {EDITIONS.map((e) => <td key={e} className="num td">{formatUGX(EDITION_META[e].deposit_ugx)}</td>)}
                 </tr>
@@ -91,6 +99,7 @@ export default function PackagesPage() {
             <ul className="space-y-2">
               <li>The client supplies accurate business details, a logo (if available) and existing records to be imported.</li>
               <li>Customer balances are calculated from recorded transactions; the client reviews and confirms migrated opening balances.</li>
+              <li>Monthly maintenance is optional and is taken up if the client is prepared for it; the customer-email fee is compulsory for as long as emails run, and is separate from maintenance.</li>
               <li>Source-code handover, ongoing maintenance and support beyond the package terms must be agreed in writing.</li>
             </ul>
           </div>

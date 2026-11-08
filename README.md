@@ -5,15 +5,20 @@ records, records savings and credit activity, and prints statements of account.
 
 Built to the GSS quotation of 1 November 2026, which sells three packages:
 
-| Package | Price (UGX) | Scope |
-| --- | --- | --- |
-| Basic | 900,000 | Admin login, customers, savings and credit entries, basic statement PDF, dashboard totals |
-| Classic | 1,500,000 | Adds customer profiles, separate savings/credit balances, statement by date range, CSV export, backup and correction history, **30 days priority bug-fix support** |
-| Enhanced | 2,300,000 | Adds date-filtered reports, activity and outstanding-credit reports, spreadsheet import, better search, **60 days priority bug-fix support** |
+| Package | One-time fee | Monthly maintenance | Monthly email fee | Scope |
+| --- | --- | --- | --- | --- |
+| Basic | 900,000 | 100,000 | Not offered | Admin login, customers, savings and credit entries, basic statement PDF, dashboard totals |
+| Classic | 1,500,000 | 150,000 | 50,000 (compulsory) | Adds customer profiles, separate savings/credit balances, statement by date range, CSV export, backup and correction history, **30 days priority bug-fix support** |
+| Enhanced | 2,300,000 | 200,000 | 50,000 (compulsory) | Adds date-filtered reports, activity and outstanding-credit reports, spreadsheet import, better search, **60 days priority bug-fix support** |
 
-Prices, delivery times and the support term live in
+Prices, delivery times, the support term and both monthly fees live in
 `supabase/functions/_shared/domain/editions.ts`, so the pricing page and the
 licence check always agree.
+
+Maintenance is optional - it is taken up if the client is prepared for it. The
+email fee is not: any package that sends customer emails must keep paying it for
+as long as emails run, and it is separate from maintenance. The two are carried
+as `maintenance_ugx` and `email_fee_ugx` on each edition.
 
 ## Customer email notifications
 

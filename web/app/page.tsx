@@ -121,6 +121,9 @@ export default function Home() {
                   <p className="mt-1 text-sm text-ink-soft">{meta.tagline}</p>
                   <p className="mt-4 font-display text-3xl font-extrabold text-brand-700">{formatUGX(meta.price_ugx)}</p>
                   <p className="text-xs text-ink-mute">one-time development fee · delivery {meta.delivery_days}</p>
+                  <p className="mt-1 text-xs font-semibold text-ink-soft">
+                    + {formatUGX(meta.maintenance_ugx)} monthly maintenance, if prepared
+                  </p>
                   <button className={`mt-5 w-full ${meta.recommended ? "btn-primary" : "btn-secondary"}`} onClick={() => openDemo(edition)} disabled={busy !== null}>
                     {busy === edition ? <Spinner label="" /> : null} Open the {meta.name} demo
                   </button>
@@ -138,6 +141,26 @@ export default function Home() {
                   <div className="mt-5 rounded-xl bg-sand-50 p-3 text-xs text-ink-soft">
                     <p className="font-semibold text-ink">Payment plan</p>
                     <p className="mt-1">50% deposit {formatUGX(meta.deposit_ugx)} · 30% after working demo {formatUGX(meta.demo_ugx)} · 20% on handover {formatUGX(meta.handover_ugx)}</p>
+                  </div>
+                  <div className="mt-3 rounded-xl border border-sand-200 p-3 text-xs text-ink-soft">
+                    <p className="font-semibold text-ink">Monthly fees after handover</p>
+                    <dl className="mt-2 space-y-1.5">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <dt>Maintenance{meta.maintenance_ugx > 0 ? ", if prepared" : ""}</dt>
+                        <dd className="tabular font-semibold text-ink">{formatUGX(meta.maintenance_ugx)}</dd>
+                      </div>
+                      <div className="flex items-baseline justify-between gap-3">
+                        <dt>Customer emails{meta.email_fee_ugx > 0 ? " (compulsory)" : ""}</dt>
+                        <dd className="tabular font-semibold text-ink">
+                          {meta.email_fee_ugx > 0 ? formatUGX(meta.email_fee_ugx) : "Not offered"}
+                        </dd>
+                      </div>
+                    </dl>
+                    {meta.email_fee_ugx > 0 && (
+                      <p className="mt-2 text-ink-mute">
+                        The email fee is separate from maintenance and is required for as long as customer emails run.
+                      </p>
+                    )}
                   </div>
                 </div>
               );
@@ -196,6 +219,7 @@ export default function Home() {
                   <li>Date-filtered reports and spreadsheet import (Enhanced)</li>
                   <li>Hosting setup, data import guidance and priority bug-fix support (Classic: 30 days, Enhanced: 60 days)</li>
                   <li>Customer email notifications, counted from handover (Classic: 1 month, Enhanced: 2 months)</li>
+                  <li>Monthly maintenance and the compulsory customer-email fee are quoted separately, per package</li>
                 </ul>
               </div>
               <div>
@@ -204,7 +228,7 @@ export default function Home() {
                   <li>Interest calculations and automated loan schedules</li>
                   <li>Payment gateway, mobile-money processing, SMS or WhatsApp integrations</li>
                   <li>Customer self-service accounts (the system is for one business administrator)</li>
-                  <li>Ongoing maintenance and support beyond the package terms</li>
+                  <li>Ongoing maintenance and support beyond the package terms (available monthly, see the package cards)</li>
                 </ul>
                 <p className="mt-3 text-xs text-ink-mute">
                   Customer balances are calculated from recorded transactions. The client reviews and confirms migrated
