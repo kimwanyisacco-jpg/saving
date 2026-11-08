@@ -99,7 +99,20 @@ presentation can add customers and transactions freely and reset from Admin.
 ```bash
 cd web && npm run typecheck
 deno check supabase/functions/api/index.ts
+
+# the offline demo the hosted presentation serves (no backend needed)
+deno run -A --sloppy-imports tests/offline.ts
+
+# the API against a running Postgres and Edge Function; it reseeds each package
+API_URL=http://localhost:8000 deno run -A tests/e2e.ts
 ```
+
+`tests/e2e.ts` covers the package gates, balances derived from transactions, the
+void/correction/restore trail, input validation and access control, staff
+accounts, settings, backup, CSV export, reports and spreadsheet import.
+
+`tests/offline.ts` runs the same flows through `web/lib/demo.ts` in-process, so
+the browser demo cannot drift from the API.
 
 ## Security notes
 

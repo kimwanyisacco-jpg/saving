@@ -1,0 +1,171 @@
+// End-to-end check of the API against a real Postgres + Edge Function.
+//
+//   API_URL=http://localhost:8000 deno run -A tests/e2e.ts
+//
+// It reseeds the demo data for each package before checking it, so the run is
+// repeatable: /setup/demo is a full reset.
+const BASE = (Deno.env.get("API_URL") ?? "http://localhost:8000") + "/api/v1";
+
+let pass = 0;
+let fail = 0;
+const ok = (name: string, got: unknown, want: unknown) => {
+  if (JSON.stringify(got) === JSON.stringify(want)) { pass++; console.log(`  ok   ${name}`); }
+  else { fail++; console.log(`  FAIL ${name}: got ${JSON.stringify(got)} want ${JSON.stringify(want)}`); }
+};
+
+// deno-lint-ignore no-explicit-any
+async function req(method: string, path: string, opts: { token?: string; body?: unknown } = {}): Promise<{ status: number; body: any; text: string; headers: Headers }> {
+  const headers: Record<string, string> = {};
+  if (opts.token) headers.authorization = "Bearer " + opts.token;
+  if (opts.body !== undefined) headers["content-type"] = "application/json";
+  const r = await fetch(BASE + path, { method, headers, body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined });
+  const text = await r.text();
+  let body: any = null;
+  try { body = text ? JSON.parse(text) : null; } catch { body = null; }
+  return { status: r.status, body, text, headers: r.headers };
+}
+
+async function seed(edition: string): Promise<string> {
+  const s = await req("POST", "/setup/demo", { body: { edition, reset: true } });
+  if (s.status !== 201) throw new Error("could not seed " + edition + ": " + s.text);
+  const account = s.body.accounts.find((a: any) => a.role === "admin");
+  const l = await req("POST", "/auth/login", { body: { login: account.login, password: account.password } });
+  return l.body.token as string;
+}
+
+console.log("\n# package gates");
+{
+  const want: Record<string, Record<string, number>> = {
+    basic: { customerStatement: 200, businessStatement: 402, csv: 402, backup: 402, reports: 402, corrections: 402, import: 402 },
+    classic: { customerStatement: 200, businessStatement: 402, csv: 200, backup: 200, reports: 402, corrections: 200, import: 402 },
+    enhanced: { customerStatement: 200, businessStatement: 200, csv: 200, backup: 200, reports: 200, corrections: 200, import: 200 },
+  };
+  for (const edition of ["basic", "classic", "enhanced"]) {
+    const token = await seed(edition);
+    const list = await req("GET", "/customers?limit=1", { token });
+    const id = list.body.customers[0].id;
+    const got = {
+      customerStatement: (await req("GET", `/statements/${id}`, { token })).status,
+      businessStatement: (await req("GET", "/statements/business.pdf", { token })).status,
+      csv: (await req("GET", "/transactions/export", { token })).status,
+      backup: (await req("GET", "/admin/backup.json", { token })).status,
+      reports: (await req("GET", "/reports/summary", { token })).status,
+      corrections: (await req("GET", "/transactions/corrections", { token })).status,
+      import: (await req("GET", "/import/template.csv", { token })).status,
+    };
+    ok(`${edition} gate`, got, want[edition]);
+  }
+}
+
+console.log("\n# balances are derived from transactions");
+{
+  const token = await seed("enhanced");
+  const created = await req("POST", "/customers", { token, body: { name: "E2E Person", phone: "+256700999888", joined_on: "2026-11-01" } });
+  const id = created.body.customer.id;
+
+  const dep = await req("POST", "/transactions", { token, body: { customer_id: id, kind: "savings_deposit", amount: 250000, occurred_on: "2026-11-02", method: "cash" } });
+  ok("deposit recorded", dep.status, 201);
+  const tx1 = dep.body.transaction.id;
+  await req("POST", "/transactions", { token, body: { customer_id: id, kind: "credit_issued", amount: 100000, occurred_on: "2026-11-03" } });
+  await req("POST", "/transactions", { token, body: { customer_id: id, kind: "credit_repayment", amount: 40000, occurred_on: "2026-11-04" } });
+
+  let b = (await req("GET", `/customers/${id}`, { token })).body.balances;
+  ok("savings balance", b.savings, 250000);
+  ok("credit outstanding", b.credit_outstanding, 60000);
+
+  console.log("\n# void, correction and restore");
+  await req("POST", `/transactions/${tx1}/void`, { token, body: { reason: "duplicate receipt" } });
+  b = (await req("GET", `/customers/${id}`, { token })).body.balances;
+  ok("savings after void", b.savings, 0);
+  const corrections = (await req("GET", "/transactions/corrections", { token })).body.corrections;
+  ok("correction logged", corrections.some((c: any) => c.transaction_id === tx1), true);
+  ok("reason kept", corrections.find((c: any) => c.transaction_id === tx1).reason, "duplicate receipt");
+
+  await req("POST", `/transactions/${tx1}/restore`, { token, body: { reason: "duplicate was ours" } });
+  b = (await req("GET", `/customers/${id}`, { token })).body.balances;
+  ok("savings after restore", b.savings, 250000);
+}
+
+console.log("\n# input validation and access control");
+{
+  const token = await seed("enhanced");
+  const id = (await req("GET", "/customers?limit=1", { token })).body.customers[0].id;
+  ok("zero amount refused", (await req("POST", "/transactions", { token, body: { customer_id: id, kind: "savings_deposit", amount: 0, occurred_on: "2026-11-05" } })).status, 400);
+  ok("negative amount refused", (await req("POST", "/transactions", { token, body: { customer_id: id, kind: "savings_deposit", amount: -5, occurred_on: "2026-11-05" } })).status, 400);
+  ok("unknown type refused", (await req("POST", "/transactions", { token, body: { customer_id: id, kind: "loan_shark", amount: 10, occurred_on: "2026-11-05" } })).status, 400);
+  ok("no token refused", (await req("GET", "/customers")).status, 401);
+  ok("bad token refused", (await req("GET", "/customers", { token: "nope" })).status, 401);
+  ok("bad password refused", (await req("POST", "/auth/login", { body: { login: "admin@enhanced.demo", password: "wrong" } })).status, 401);
+
+  console.log("\n# staff accounts");
+  await req("POST", "/admin/users", { token, body: { name: "E2E Clerk", email: "e2e.clerk@enhanced.demo", password: "Clerk#12345", role: "staff" } });
+  const clerk = await req("POST", "/auth/login", { body: { login: "e2e.clerk@enhanced.demo", password: "Clerk#12345" } });
+  ok("staff signs in", clerk.body.user.role, "staff");
+  ok("staff blocked from backup", (await req("GET", "/admin/backup.json", { token: clerk.body.token })).status, 403);
+  ok("staff blocked from accounts", (await req("GET", "/admin/users", { token: clerk.body.token })).status, 403);
+}
+
+console.log("\n# settings, backup and exports");
+{
+  const token = await seed("enhanced");
+  await req("PUT", "/admin/settings", { token, body: { business_name: "E2E Savings Test", business_footer_note: "E2E footer" } });
+  ok("settings saved", (await req("GET", "/auth/me", { token })).body.business.name, "E2E Savings Test");
+
+  const csv = await req("GET", "/transactions/export", { token });
+  ok("csv header", csv.text.split("\n")[0].slice(0, 5), "Recei");
+  ok("csv is attachment", (csv.headers.get("content-disposition") ?? "").startsWith("attachment"), true);
+
+  const backup = (await req("GET", "/admin/backup.json", { token })).body;
+  ok("backup tables", ["users", "customers", "transactions", "transaction_corrections", "app_settings", "audit_logs"].every((k) => k in backup.tables), true);
+  ok("backup audit rows", backup.counts.audit > 0, true);
+}
+
+console.log("\n# reports");
+{
+  const token = await seed("enhanced");
+  const s = (await req("GET", "/reports/summary?from=2026-06-01&to=2026-11-08", { token })).body;
+  ok("six months", s.months.length, 6);
+  ok("month label is a name", /^[A-Z][a-z]+ \d{4}$/.test(s.months[0].label), true);
+  ok("opening plus movement is closing", s.opening.savings + s.movement.savings, s.closing.savings);
+  ok("credit: opening plus movement is closing", s.opening.credit_outstanding + s.movement.credit_outstanding, s.closing.credit_outstanding);
+  const activity = (await req("GET", "/reports/activity?from=2026-06-01&to=2026-11-08", { token })).body;
+  ok("activity rows", activity.rows.length > 0, true);
+  ok("activity totals add up", activity.totals.transactions, activity.rows.reduce((a: number, r: any) => a + r.tx_count, 0));
+  const outstanding = (await req("GET", "/reports/outstanding", { token })).body;
+  ok("outstanding rows", outstanding.rows.length > 0, true);
+  ok("outstanding is largest first", outstanding.rows.every((r: any, i: number, a: any[]) => i === 0 || a[i - 1].credit_outstanding >= r.credit_outstanding), true);
+}
+
+console.log("\n# import (Enhanced)");
+{
+  const token = await seed("enhanced");
+  const csv = [
+    "Customer,Phone,Type,Amount,Date,Method,Reference,Note",
+    "Imported One,+256700111222,Savings deposit,50000,2026-10-01,cash,DEP-90001,Opening",
+    "Imported Two,+256700111333,Savings deposit,75000,2026-10-02,cash,DEP-90002,Opening",
+  ].join("\n");
+  const preview = await req("POST", "/import/preview", { token, body: { csv } });
+  ok("preview parses both rows", preview.body.rows.length, 2);
+  ok("preview writes nothing", (await req("GET", "/customers?q=Imported%20One", { token })).body.customers.length, 0);
+
+  const commit = await req("POST", "/import/commit", { token, body: { csv } });
+  ok("commit accepted both", commit.body.imported, 2);
+  ok("commit created the customers", commit.body.created_customers, 2);
+  ok("imported rows are on file", (await req("GET", "/customers?q=Imported%20One", { token })).body.customers.length, 1);
+  ok("imported transaction is recorded", (await req("GET", "/transactions?q=DEP-90001", { token })).body.transactions.length, 1);
+}
+
+console.log("\n# statements");
+{
+  const token = await seed("enhanced");
+  const id = (await req("GET", "/customers?limit=1", { token })).body.customers[0].id;
+  const r = await req("GET", `/statements/${id}?from=2026-01-01&to=2026-11-08`, { token });
+  ok("customer statement is a pdf", r.text.slice(0, 5), "%PDF-");
+  ok("statement is an attachment", (r.headers.get("content-disposition") ?? "").includes(".pdf"), true);
+  const business = await req("GET", "/statements/business.pdf?from=2026-01-01&to=2026-11-08", { token });
+  ok("business statement is a pdf", business.text.slice(0, 5), "%PDF-");
+  ok("business statement names the business", business.text.includes("Wakiso"), true);
+}
+
+console.log(`\n${pass} passed, ${fail} failed`);
+if (fail) Deno.exit(1);

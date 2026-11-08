@@ -1,7 +1,7 @@
 // Balances and report maths. Pure functions over plain rows so the server, the
 // tests and the browser demo all agree to the shilling.
 import type { Balances, Customer, Transaction, TxKind } from "./types.ts";
-import { monthKey } from "./dates.ts";
+import { formatMonth, monthKey } from "./dates.ts";
 
 export const isCredit = (k: TxKind) => k === "credit_issued" || k === "credit_repayment";
 
@@ -70,7 +70,7 @@ export function monthlySeries(txs: Transaction[], endMonth: string, months = 6):
   for (let i = months - 1; i >= 0; i--) {
     const d = new Date(Date.UTC(ey, em - 1 - i, 1));
     const key = d.toISOString().slice(0, 7);
-    rows.set(key, { period: key, label: key, count: 0, savings: 0, credit_outstanding: 0, savings_in: 0, savings_out: 0, credit_issued: 0, credit_repaid: 0 });
+    rows.set(key, { period: key, label: formatMonth(key), count: 0, savings: 0, credit_outstanding: 0, savings_in: 0, savings_out: 0, credit_issued: 0, credit_repaid: 0 });
   }
   for (const t of live(txs)) {
     const r = rows.get(monthKey(t.occurred_on));

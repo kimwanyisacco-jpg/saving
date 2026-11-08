@@ -212,7 +212,7 @@ export function handle(method: string, path: string, body: any, actor?: Actor): 
         notes: body.notes || null, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       };
       s.customers.push(c); saveState(s);
-      return ok({ customer: c });
+      return { status: 201, body: { customer: c } };
     }
     const c = s.customers.find((x) => x.id === parts[1].replace(/\.pdf$/, ""));
     if (!c) return err(404, "Customer not found", "not_found");
@@ -282,7 +282,7 @@ export function handle(method: string, path: string, body: any, actor?: Actor): 
         created_at: new Date().toISOString(), voided_at: null, void_reason: null,
       };
       s.transactions.push(t); saveState(s);
-      return ok({ transaction: withNames(s, t) });
+      return { status: 201, body: { transaction: withNames(s, t) } };
     }
     const t = s.transactions.find((x) => x.id === parts[1]);
     if (!t) return err(404, "Transaction not found", "not_found");
