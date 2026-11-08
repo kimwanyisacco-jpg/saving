@@ -15,6 +15,22 @@ Prices, delivery times and the support term live in
 `supabase/functions/_shared/domain/editions.ts`, so the pricing page and the
 licence check always agree.
 
+## Customer email notifications
+
+Classic and Enhanced tell the customer directly: registering a customer emails
+them their customer number, and recording a transaction emails them a receipt.
+Basic has no email entitlement, and a customer with no email address is simply
+not messaged. The window is counted from handover - Classic 1 month (30 days),
+Enhanced 2 months (60 days) - and lives as `notify_days` on the edition beside
+`support_days`.
+
+Sending goes through [Resend](https://resend.com). Set `RESEND_API_KEY` and
+`MAIL_FROM` on the Edge Function; with no key the message is still written to the
+outbox as `skipped`, so the presentation shows what would have gone out. Every
+message is stored in `notification_outbox` with its outcome, and Admin shows the
+handover date and the messages sent. A send that fails is recorded, never
+thrown: a mail problem must not undo the recording of money.
+
 ## Support after handover
 
 Each package carries a priority bug-fix window, counted from handover: Classic

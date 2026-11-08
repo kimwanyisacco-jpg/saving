@@ -53,6 +53,14 @@ API_URL=http://localhost:8000 deno run -A tests/e2e.ts
   days, Enhanced 60, Basic none. It lives as `support_days` on the edition, not
   as a fixed feature bullet, because the term differs by package. Change it in
   `editions.ts` only; the pricing page, Admin screen and licence all read it.
+- Customer email notifications are a package entitlement, sold in months:
+  Classic 1, Enhanced 2, Basic none. `notify_days` on the edition is the single
+  source of truth (30/60), and the window is counted from the `handover_on`
+  setting, not from the transaction date.
+- Every message to a customer is built by `_shared/domain/notify.ts` (pure) and
+  written to `notification_outbox` by `_shared/notifications.ts` before sending
+  through Resend (`_shared/mail.ts`). A failed send is recorded, never thrown -
+  it must not undo the recording of money.
 - Receipt numbers and references are issued by the system (`domain/refs.ts`): a
   reference is the kind prefix plus the receipt sequence, so the two agree. A
   form must never send a reference; only a spreadsheet import may carry one, so

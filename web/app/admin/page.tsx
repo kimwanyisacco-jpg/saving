@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Database, Download, RefreshCw, Save, UserPlus } from "lucide-react";
+import { Database, Download, Mail, RefreshCw, Save, UserPlus } from "lucide-react";
 import { Authed } from "@/components/Authed";
 import { Card, EditionBadge, Field, Notice, Spinner, Tile, Upgrade, useToast } from "@/components/ui";
 import { useApi } from "@/lib/useApi";
@@ -13,6 +13,19 @@ interface Overview {
   users: number; admins: number; customers: number; transactions: number; voided: number; corrections: number;
   totals: { savings: number; credit_outstanding: number; customers: number };
   edition: Edition; capabilities: Record<string, boolean>; business: BusinessProfile; demo_mode: boolean;
+}
+
+interface NotifyStatus {
+  open: boolean; configured: boolean;
+  handover_on: string | null; window_ends_on: string | null; edition: Edition; days?: number;
+}
+
+interface NotifyRow {
+  id: string; kind: "customer_registered" | "transaction_recorded";
+  recipient: string; subject: string; body: string;
+  status: "queued" | "sent" | "failed" | "skipped"; provider: string; error: string | null;
+  customer_name: string | null; customer_code: string | null;
+  created_at: string; sent_at: string | null;
 }
 
 export default function AdminPage() {
@@ -34,6 +47,7 @@ function AdminPanels() {
   const overview = useApi<Overview>("/admin/overview");
   const settings = useApi<{ settings: Record<string, string>; edition: Edition; editions: { id: Edition; name: string; tagline: string }[]; capabilities: Record<string, boolean> }>("/admin/settings");
   const users = useApi<{ users: { id: string; name: string; email: string | null; role: string; is_active: boolean; last_login_at: string | null }[] }>("/admin/users");
+  const notify = useApi<{ status: NotifyStatus; notifications: NotifyRow[] }>("/admin/notifications");
   const { toast, toastView } = useToast();
 
   if (overview.loading && !overview.data) return <Spinner label="Loading admin" />;
@@ -71,6 +85,13 @@ function AdminPanels() {
         current={o.edition}
         settings={settings.data?.settings ?? {}}
         onSaved={() => { settings.refresh(); overview.refresh(); toast({ tone: "success", text: "Settings saved." }); }}
+        toast={toast}
+      />
+
+      <CustomerEmailsPanel
+        data={notify.data}
+        loading={notify.loading}
+        onSaved={() => { notify.refresh(); toast({ tone: "success", text: "Handover date saved." }); }}
         toast={toast}
       />
 
@@ -158,6 +179,90 @@ function EditionPanel({ current, settings, onSaved, toast }: { current: Edition;
           </div>
           <Field label="Logo initials" hint="Two or three letters shown in the statement header"><input className="input" maxLength={3} value={profile.business_logo_text} onChange={(e) => setProfile((p) => ({ ...p, business_logo_text: e.target.value.toUpperCase() }))} /></Field>
           <Field label="Statement footer note"><input className="input" value={profile.business_footer_note} onChange={(e) => setProfile((p) => ({ ...p, business_footer_note: e.target.value }))} /></Field>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function CustomerEmailsPanel({ data, loading, onSaved, toast }: {
+  data?: { status: NotifyStatus; notifications: NotifyRow[] } | null;
+  loading: boolean;
+  onSaved: () => void;
+  toast: (t: { tone: "success" | "error"; text: string }) => void;
+}) {
+  const status = data?.status;
+  const [handover, setHandover] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { setHandover(status?.handover_on ?? ""); }, [status?.handover_on]);
+
+  async function save() {
+    setBusy(true);
+    try { await api("/admin/settings", { method: "PUT", body: { handover_on: handover } }); onSaved(); }
+    catch (e) { toast({ tone: "error", text: (e as Error).message }); }
+    finally { setBusy(false); }
+  }
+
+  if (!status) return null;
+
+  // Basic has no email entitlement, so the whole panel is hidden there. On a
+  // package that has one it stays visible even before handover, so the date can be set.
+  if (status.days === 0) return null;
+
+  const rows = data?.notifications ?? [];
+
+  return (
+    <Card
+      title="Customer emails"
+      action={<span className="text-xs text-ink-mute">{status.open ? "Window open" : "Window closed"}</span>}
+    >
+      <div className="grid gap-4 lg:grid-cols-[20rem_1fr]">
+        <div className="space-y-3">
+          <Field label="Handover date" hint="Starts the package's email window">
+            <input type="date" className="input" value={handover} onChange={(e) => setHandover(e.target.value)} />
+          </Field>
+          <button className="btn-secondary" onClick={save} disabled={busy}>{busy ? <Spinner label="" /> : <Save className="h-4 w-4" />} Save date</button>
+          <p className="text-xs text-ink-mute">
+            {status.open
+              ? <>Messages to customers run until {status.window_ends_on ? formatDate(status.window_ends_on) : "-"}.</>
+              : <>No customer emails are sent. Set the handover date to open the window.</>}
+          </p>
+          {!status.configured && (
+            <Notice tone="warn">No mail provider is configured, so messages are recorded but not sent. Set RESEND_API_KEY and MAIL_FROM on the server.</Notice>
+          )}
+        </div>
+        <div>
+          <div className="flex items-center gap-2 text-sm text-ink-soft">
+            <Mail className="h-4 w-4 text-brand-600" />
+            <span>{formatNumber(rows.length)} message{rows.length === 1 ? "" : "s"} recorded</span>
+          </div>
+          {loading && !data ? <Spinner label="Loading messages" /> : rows.length === 0 ? (
+            <p className="mt-3 text-sm text-ink-mute">Register a customer or record a transaction and the message to the customer appears here.</p>
+          ) : (
+            <div className="mt-3 max-h-80 overflow-auto rounded-xl border border-sand-200">
+              <table className="w-full min-w-[34rem]">
+                <thead className="sticky top-0 bg-sand-50">
+                  <tr className="border-b border-sand-200"><th className="th">Sent to</th><th className="th">Subject</th><th className="th">Status</th></tr>
+                </thead>
+                <tbody className="divide-y divide-sand-100">
+                  {rows.map((n) => (
+                    <tr key={n.id} className="hover:bg-sand-50">
+                      <td className="td">
+                        <span className="block font-semibold">{n.customer_name ?? "-"}</span>
+                        <span className="block font-mono text-xs text-ink-mute">{n.recipient}</span>
+                      </td>
+                      <td className="td">{n.subject}</td>
+                      <td className="td">
+                        <span className="capitalize">{n.status}</span>
+                        {n.error && <span className="block text-xs text-ink-mute">{n.error}</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </Card>

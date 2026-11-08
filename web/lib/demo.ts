@@ -7,10 +7,12 @@ import { EDITION_META, EDITIONS, editionCapabilities, hasCap, CAPS } from "../..
 import { balances, customerActivity, monthlySeries, statementLines } from "../../supabase/functions/_shared/domain/compute";
 import { buildStatement, statementFileName } from "../../supabase/functions/_shared/domain/statement";
 import { referenceFor } from "../../supabase/functions/_shared/domain/refs";
+import { customerWelcome, notificationsOpen, notificationWindowEnd, transactionReceipt } from "../../supabase/functions/_shared/domain/notify";
+import { notifyDays } from "../../supabase/functions/_shared/domain/editions";
 import { addMonths, today, toISODate } from "../../supabase/functions/_shared/domain/dates";
 import type { BusinessProfile, Customer, Edition, Transaction, TxKind, TxMethod } from "../../supabase/functions/_shared/domain/types";
 
-const KEY = "credit-savings.demo.v3";
+const KEY = "credit-savings.demo.v4";
 
 export interface DemoCorrection {
   id: string; transaction_id: string; action: "void" | "restore" | "amend";
@@ -18,9 +20,20 @@ export interface DemoCorrection {
   customer_name: string | null; tx_amount: number | null; tx_kind: string | null;
 }
 
+export interface DemoNotification {
+  id: string; kind: "customer_registered" | "transaction_recorded";
+  recipient: string; subject: string; body: string;
+  status: "queued" | "sent" | "failed" | "skipped";
+  customer_name: string | null; customer_code: string | null;
+  created_at: string; sent_at: string | null;
+}
+
 export interface DemoState {
   edition: Edition;
   profile: BusinessProfile;
+  /** ISO day the system was handed over; starts the customer-email window. */
+  handover_on: string | null;
+  notifications: DemoNotification[];
   staff: { id: string; name: string; email: string; phone: string; role: "admin" | "staff"; password: string; is_active?: boolean; last_login_at?: string | null }[];
   customers: Customer[];
   transactions: Transaction[];
@@ -39,6 +52,9 @@ export function freshState(edition: Edition): DemoState {
   return {
     edition,
     profile: d.profile,
+    // The demo is presented as already handed over, so the email window is open.
+    handover_on: d.generated_at.slice(0, 10),
+    notifications: [],
     staff,
     customers: d.customers,
     // The dataset leaves recorded_by null (the server fills it in on insert);
@@ -69,6 +85,8 @@ function repair(s: DemoState): DemoState {
     s.transactions = s.transactions.map((t, i) => (t.recorded_by ? t : { ...t, recorded_by: s.staff[i % s.staff.length].id }));
   }
   if (!Array.isArray(s.corrections)) s.corrections = [];
+  if (!Array.isArray(s.notifications)) s.notifications = [];
+  if (s.handover_on === undefined) s.handover_on = s.generated_at.slice(0, 10);
   return s;
 }
 
@@ -118,6 +136,36 @@ function nextReceiptSeq(s: DemoState) {
     const m = /^R-(\d+)$/.exec(t.receipt_no ?? "");
     return m ? Math.max(a, Number(m[1])) : a;
   }, 100000) + 1;
+}
+
+/** The demo's mail sender: it records what would go to the customer, exactly as
+ *  the server records it in the outbox, so the presentation can show the inbox. */
+function notifyCustomer(s: DemoState, build: (ctx: Parameters<typeof customerWelcome>[0]) => ReturnType<typeof customerWelcome>) {
+  const ctx = {
+    business_name: s.profile.name, business_phone: s.profile.phone, business_email: s.profile.email,
+    edition: s.edition, handover_on: s.handover_on, today: today(),
+  };
+  if (!notificationsOpen(ctx)) return;
+  const msg = build(ctx);
+  if (!msg) return;
+  const c = s.customers.find((x) => x.id === msg.customer_id);
+  s.notifications.unshift({
+    id: uuid(), kind: msg.kind, recipient: msg.to, subject: msg.subject, body: msg.text,
+    status: "sent", customer_name: c?.name ?? null, customer_code: c?.code ?? null,
+    created_at: new Date().toISOString(), sent_at: new Date().toISOString(),
+  });
+}
+
+function notificationStatus(s: DemoState) {
+  const ctx = { business_name: s.profile.name, business_phone: s.profile.phone, business_email: s.profile.email, edition: s.edition, handover_on: s.handover_on, today: today() };
+  return {
+    open: notificationsOpen(ctx),
+    configured: true,
+    handover_on: s.handover_on,
+    window_ends_on: notificationWindowEnd(ctx),
+    edition: s.edition,
+    days: notifyDays(s.edition),
+  };
 }
 
 function nextCode(s: DemoState) {
@@ -212,7 +260,9 @@ export function handle(method: string, path: string, body: any, actor?: Actor): 
         address: body.address || null, joined_on: body.joined_on || today(), status: body.status || "active",
         notes: body.notes || null, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       };
-      s.customers.push(c); saveState(s);
+      s.customers.push(c);
+      notifyCustomer(s, (ctx) => customerWelcome(ctx, c));
+      saveState(s);
       return { status: 201, body: { customer: c } };
     }
     const c = s.customers.find((x) => x.id === parts[1].replace(/\.pdf$/, ""));
@@ -283,7 +333,10 @@ export function handle(method: string, path: string, body: any, actor?: Actor): 
         receipt_no: "R-" + seq, recorded_by: actor?.id ?? s.staff[0].id,
         created_at: new Date().toISOString(), voided_at: null, void_reason: null,
       };
-      s.transactions.push(t); saveState(s);
+      s.transactions.push(t);
+      const customer = s.customers.find((x) => x.id === t.customer_id);
+      if (customer) notifyCustomer(s, (ctx) => transactionReceipt(ctx, customer, t));
+      saveState(s);
       return { status: 201, body: { transaction: withNames(s, t) } };
     }
     const t = s.transactions.find((x) => x.id === parts[1]);
@@ -398,6 +451,7 @@ export function handle(method: string, path: string, body: any, actor?: Actor): 
         customers: s.customers.length, transactions: s.transactions.length,
         voided: s.transactions.filter((x) => x.voided_at).length, corrections: s.corrections.length,
         totals: t, edition, capabilities: caps, business: s.profile, demo_mode: true,
+        notifications: notificationStatus(s),
       });
     }
     if (parts[1] === "users") {
@@ -423,12 +477,13 @@ export function handle(method: string, path: string, body: any, actor?: Actor): 
       }
     }
     if (parts[1] === "settings" && method === "GET") {
-      return ok({ settings: { edition, business_name: s.profile.name, business_address: s.profile.address, business_phone: s.profile.phone, business_email: s.profile.email, business_logo_text: s.profile.logo_text, business_footer_note: s.profile.footer_note }, edition, editions: Object.values(EDITION_META), capabilities: caps });
+      return ok({ settings: { edition, handover_on: s.handover_on ?? "", business_name: s.profile.name, business_address: s.profile.address, business_phone: s.profile.phone, business_email: s.profile.email, business_logo_text: s.profile.logo_text, business_footer_note: s.profile.footer_note }, edition, editions: Object.values(EDITION_META), capabilities: caps });
     }
     if (parts[1] === "settings" && (method === "PUT" || method === "POST")) {
       // Changing package only changes what is served - records are kept, exactly
       // like the server. Use "Seed ..." below to load a package's standard dataset.
       if (body?.edition) s.edition = body.edition as Edition;
+      if (body?.handover_on !== undefined) s.handover_on = body.handover_on || null;
       for (const [key, field] of [["business_name", "name"], ["business_address", "address"], ["business_phone", "phone"], ["business_email", "email"], ["business_logo_text", "logo_text"], ["business_footer_note", "footer_note"]] as const) {
         if (body?.[key] !== undefined) s.profile = { ...s.profile, [field]: body[key] };
       }
@@ -436,6 +491,9 @@ export function handle(method: string, path: string, body: any, actor?: Actor): 
       return ok({ settings: {}, edition: s.edition, business: s.profile });
     }
     if (parts[1] === "corrections") return ok({ corrections: s.corrections });
+    if (parts[1] === "notifications") {
+      return ok({ status: notificationStatus(s), notifications: s.notifications });
+    }
     if (parts[1] === "backup.json") {
       if (!hasCap(edition, CAPS.backup)) return err(402, "Backup download is part of the Classic package.", "edition_required");
       const payload = {

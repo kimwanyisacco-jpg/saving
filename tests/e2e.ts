@@ -184,6 +184,49 @@ console.log("\n# reports");
   ok("outstanding is largest first", outstanding.rows.every((r: any, i: number, a: any[]) => i === 0 || a[i - 1].credit_outstanding >= r.credit_outstanding), true);
 }
 
+console.log("\n# customer email notifications");
+{
+  const token = await seed("classic");
+  const created = (await req("POST", "/customers", { token, body: { name: "Notify Test", email: "notify@example.com" } })).body.customer;
+  let out = (await req("GET", "/admin/notifications", { token })).body;
+  ok("registration records a message", out.notifications.length, 1);
+  ok("registration message goes to the customer", out.notifications[0].recipient, "notify@example.com");
+  ok("registration message names the number", out.notifications[0].subject.includes(created.code), true);
+  ok("no mail provider is configured locally", out.notifications[0].status, "skipped");
+
+  await req("POST", "/transactions", { token, body: { customer_id: created.id, kind: "savings_deposit", amount: 5000, occurred_on: "2026-11-02" } });
+  out = (await req("GET", "/admin/notifications", { token })).body;
+  ok("deposit records a receipt", out.notifications.length, 2);
+  ok("receipt is the newest", out.notifications[0].kind, "transaction_recorded");
+  ok("receipt names the amount", out.notifications[0].body.includes("UGX 5,000"), true);
+  ok("receipt is addressed to the customer", out.notifications[0].recipient, "notify@example.com");
+  ok("the window is open on Classic", out.status.open, true);
+  ok("the window closes 30 days after handover", out.status.window_ends_on.slice(0, 4), out.status.handover_on.slice(0, 4));
+  ok("Classic entitlement is 30 days", out.status.days, 30);
+
+  // A customer with no email is simply not messaged.
+  await req("POST", "/customers", { token, body: { name: "No Email" } });
+  ok("customer without an email gets nothing", (await req("GET", "/admin/notifications", { token })).body.notifications.length, 2);
+
+  // Basic has no email entitlement at all.
+  const basic = await seed("basic");
+  const bc = (await req("POST", "/customers", { token: basic, body: { name: "Basic Test", email: "basic@example.com" } })).body.customer;
+  await req("POST", "/transactions", { token: basic, body: { customer_id: bc.id, kind: "savings_deposit", amount: 1000, occurred_on: "2026-11-02" } });
+  const bout = (await req("GET", "/admin/notifications", { token: basic })).body;
+  ok("Basic sends nothing", bout.notifications.length, 0);
+  ok("Basic has no window", bout.status.window_ends_on, null);
+  ok("Basic entitlement is zero days", bout.status.days, 0);
+
+  // Moving the handover date into the past closes the window on Classic. Seeding
+  // Basic replaced every account, so sign in to Classic again first.
+  const ctoken = await seed("classic");
+  const cc = (await req("POST", "/customers", { token: ctoken, body: { name: "Window Test", email: "window@example.com" } })).body.customer;
+  await req("PUT", "/admin/settings", { token: ctoken, body: { handover_on: "2020-01-01" } });
+  ok("an old handover closes the window", (await req("GET", "/admin/notifications", { token: ctoken })).body.status.open, false);
+  await req("POST", "/transactions", { token: ctoken, body: { customer_id: cc.id, kind: "savings_deposit", amount: 1000, occurred_on: "2026-11-02" } });
+  ok("nothing is recorded once closed", (await req("GET", "/admin/notifications", { token: ctoken })).body.notifications.length, 1);
+}
+
 console.log("\n# import (Enhanced)");
 {
   const token = await seed("enhanced");

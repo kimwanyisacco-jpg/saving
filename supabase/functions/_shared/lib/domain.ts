@@ -5,6 +5,7 @@ import { fail } from "../http.ts";
 import { audit } from "../audit.ts";
 import { balances, customerActivity, monthlySeries, statementLines } from "../domain/compute.ts";
 import { referenceFor, receiptSequence } from "../domain/refs.ts";
+import { notifyCustomerRegistered, notifyTransactionRecorded } from "../notifications.ts";
 import type { Customer, Transaction, TxKind, TxMethod, CustomerStatus, DashboardTotals } from "../domain/types.ts";
 import type { PeriodRow } from "../domain/compute.ts";
 import { toISODate, toISOStamp, today } from "../domain/dates.ts";
@@ -61,7 +62,10 @@ export async function createCustomer(input: CustomerInput, actorId: string): Pro
             ${input.address ?? null}, ${input.joined_on || today()}, ${input.status ?? "active"}, ${input.notes ?? null}, ${actorId})
     returning *`;
   await audit(actorId, "customer.created", "customer", r.id, { name: r.name });
-  return toCustomer(r);
+  const customer = toCustomer(r);
+  // The customer is told their number as soon as the office opens the account.
+  await notifyCustomerRegistered(customer);
+  return customer;
 }
 
 export async function updateCustomer(id: string, input: CustomerInput, actorId: string): Promise<Customer> {
@@ -141,7 +145,10 @@ export async function createTransaction(input: TxInput, actorId: string): Promis
     Object.assign(r, withRef);
   }
   await audit(actorId, "transaction.created", "transaction", r.id, { kind: r.kind, amount: num(r.amount) });
-  return toTransaction(r);
+  const tx = toTransaction(r);
+  // The customer gets the receipt, so the office and the customer hold the same record.
+  await notifyTransactionRecorded(await getCustomer(input.customer_id), tx);
+  return tx;
 }
 
 async function recordCorrection(txId: string, action: "void" | "restore" | "amend", before: Row, after: Row, reason: string | null, actorId: string) {

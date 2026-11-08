@@ -1,7 +1,7 @@
 // Administration: staff accounts, edition and business profile, backups, audit trail.
 import { Hono } from "npm:hono@4.6.14";
 import { sql } from "../db.ts";
-import { auth, fail, oneOf, publicUser, readJson, str, uuid, type Env } from "../http.ts";
+import { auth, fail, isoDate, oneOf, publicUser, readJson, str, uuid, type Env } from "../http.ts";
 import { hashPassword, randomCode } from "../crypto.ts";
 import { audit } from "../audit.ts";
 import { allSettings, businessProfile, currentEdition, setSetting } from "../settings.ts";
@@ -11,6 +11,7 @@ import { today } from "../domain/dates.ts";
 import { dashboardTotals, listCorrections } from "../lib/domain.ts";
 import { env } from "../env.ts";
 import { hasData, seedDemo } from "../lib/seed.ts";
+import { listNotifications, notificationStatus } from "../notifications.ts";
 import type { Edition } from "../domain/types.ts";
 
 export const admin = new Hono<Env>();
@@ -27,6 +28,7 @@ admin.get("/admin/overview", async (c) => {
     ...u, customers, transactions, corrections: k.corrections, totals, edition,
     capabilities: editionCapabilities(edition), business: await businessProfile(),
     demo_mode: env.demoMode,
+    notifications: await notificationStatus(),
   });
 });
 
@@ -78,6 +80,11 @@ admin.put("/admin/settings", async (c) => {
   }
   for (const [key, label] of [["business_name", "business name"], ["business_address", "address"], ["business_phone", "phone"], ["business_email", "email"], ["business_logo_text", "logo text"], ["business_footer_note", "statement footer"]] as const) {
     if (b[key] !== undefined) await setSetting(key, str(b[key], label, { optional: true, max: 300 }), actor);
+  }
+  // The handover date starts the package's customer-email window.
+  if (b.handover_on !== undefined) {
+    await setSetting("handover_on", isoDate(b.handover_on, "handover date", { optional: true }) || null, actor);
+    await audit(actor, "admin.handover_set", "app_settings", null, { handover_on: b.handover_on });
   }
   await audit(actor, "admin.settings_updated", "app_settings", null, { keys: Object.keys(b) });
   return c.json({ settings: await allSettings(), edition: await currentEdition(), business: await businessProfile() });
@@ -140,6 +147,12 @@ admin.get("/admin/backup/:table.csv", async (c) => {
 admin.get("/admin/corrections", async (c) => {
   await guardBackup();
   return c.json({ corrections: await listCorrections() });
+});
+
+// --------------------------------------------------- customer email notifications
+admin.get("/admin/notifications", async (c) => {
+  const limit = Math.min(Number(c.req.query("limit") ?? 100) || 100, 500);
+  return c.json({ status: await notificationStatus(), notifications: await listNotifications(limit) });
 });
 
 admin.get("/admin/audit", async (c) => {

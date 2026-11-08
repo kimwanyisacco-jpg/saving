@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { Check, Minus } from "lucide-react";
 import { Brand, Card, EditionBadge } from "@/components/ui";
-import { EDITIONS, EDITION_META, FEATURES, includes, supportDays, supportLabel } from "../../../supabase/functions/_shared/domain/editions";
+import { EDITIONS, EDITION_META, FEATURES, includes, notifyDays, notifyLabel, supportDays, supportLabel } from "../../../supabase/functions/_shared/domain/editions";
 import { formatUGX } from "@/lib/format";
 
 export default function PackagesPage() {
@@ -53,6 +53,10 @@ export default function PackagesPage() {
                           ? (supportDays(e) > 0
                               ? <span className="font-semibold text-brand-700">{supportLabel(e)}</span>
                               : <Minus className="mx-auto h-4 w-4 text-sand-300" aria-label="Not included" />)
+                          : f.key === "customer_emails"
+                            ? (notifyDays(e) > 0
+                                ? <span className="font-semibold text-brand-700">{notifyLabel(e)}</span>
+                                : <Minus className="mx-auto h-4 w-4 text-sand-300" aria-label="Not included" />)
                           : includes(e, f.min)
                             ? <Check className="mx-auto h-4 w-4 text-brand-600" aria-label="Included" />
                             : <Minus className="mx-auto h-4 w-4 text-sand-300" aria-label="Not included" />}

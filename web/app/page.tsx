@@ -195,6 +195,7 @@ export default function Home() {
                   <li>CSV export, backup and transaction correction history (Classic and above)</li>
                   <li>Date-filtered reports and spreadsheet import (Enhanced)</li>
                   <li>Hosting setup, data import guidance and priority bug-fix support (Classic: 30 days, Enhanced: 60 days)</li>
+                  <li>Customer email notifications, counted from handover (Classic: 1 month, Enhanced: 2 months)</li>
                 </ul>
               </div>
               <div>

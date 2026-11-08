@@ -17,23 +17,25 @@ export interface EditionMeta {
   recommended: boolean;
   /** Days of priority bug-fix support after handover. Zero means none. */
   support_days: number;
+  /** Days of customer email notifications after handover. Zero means none. */
+  notify_days: number;
 }
 
 export const EDITION_META: Record<Edition, EditionMeta> = {
   basic: {
     id: "basic", name: "Basic", tagline: "For simple record keeping",
     price_ugx: 900_000, deposit_ugx: 450_000, demo_ugx: 270_000, handover_ugx: 180_000,
-    delivery_days: "5-7 working days", recommended: false, support_days: 0,
+    delivery_days: "5-7 working days", recommended: false, support_days: 0, notify_days: 0,
   },
   classic: {
     id: "classic", name: "Classic", tagline: "For a growing business",
     price_ugx: 1_500_000, deposit_ugx: 750_000, demo_ugx: 450_000, handover_ugx: 300_000,
-    delivery_days: "1-2 weeks", recommended: true, support_days: 30,
+    delivery_days: "1-2 weeks", recommended: true, support_days: 30, notify_days: 30,
   },
   enhanced: {
     id: "enhanced", name: "Enhanced", tagline: "For broader reporting needs",
     price_ugx: 2_300_000, deposit_ugx: 1_150_000, demo_ugx: 690_000, handover_ugx: 460_000,
-    delivery_days: "2-3 weeks", recommended: false, support_days: 60,
+    delivery_days: "2-3 weeks", recommended: false, support_days: 60, notify_days: 60,
   },
 };
 
@@ -65,6 +67,7 @@ export const FEATURES: readonly Feature[] = [
   { key: "import", label: "Import existing records from one clean spreadsheet (up to 500 rows)", min: "enhanced" },
   { key: "search_filter", label: "Improved search and filtering", min: "enhanced" },
   { key: "priority_support", label: "Priority bug-fix support after handover", min: "classic" },
+  { key: "customer_emails", label: "Automatic customer email notifications", min: "classic" },
 ];
 
 const rank = (e: Edition) => EDITIONS.indexOf(e);
@@ -106,6 +109,8 @@ export function editionCapabilities(edition: Edition) {
     improvedSearch: on(CAPS.improvedSearch),
     supportDays: EDITION_META[edition].support_days,
     supportLabel: supportLabel(edition),
+    customerEmails: notifyDays(edition) > 0,
+    notifyDays: notifyDays(edition),
   };
 }
 export type EditionCapabilities = ReturnType<typeof editionCapabilities>;
@@ -115,14 +120,24 @@ export const editionName = (e: Edition) => EDITION_META[e].name;
 
 /** Days of priority bug-fix support the package includes after handover. */
 export const supportDays = (e: Edition) => EDITION_META[e].support_days;
+/** Days of customer email notifications the package includes after handover. */
+export const notifyDays = (e: Edition) => EDITION_META[e].notify_days;
+/** The same window in whole months, which is how it is sold: 0, 1 or 2. */
+export const notifyMonths = (e: Edition) => Math.round(EDITION_META[e].notify_days / 30);
 /** How the support term reads on a pricing page: "30 days", or "None". */
 export const supportLabel = (e: Edition) => (supportDays(e) > 0 ? `${supportDays(e)} days` : "None");
+/** The email window as the price list shows it: "1 month", "2 months", "None". */
+export const notifyLabel = (e: Edition) => {
+  const m = notifyMonths(e);
+  return m > 0 ? `${m} month${m === 1 ? "" : "s"}` : "None";
+};
 
 /** Does the package actually grant this feature? Usually that is just the
  *  edition rank, but the support term is granted per package, so a package that
  *  starts at Classic can still have zero days. */
 export function hasFeature(f: Feature, e: Edition): boolean {
   if (f.key === "priority_support") return supportDays(e) > 0;
+  if (f.key === "customer_emails") return notifyDays(e) > 0;
   return includes(e, f.min);
 }
 
@@ -131,6 +146,10 @@ export function hasFeature(f: Feature, e: Edition): boolean {
 export function featureLabel(f: Feature, e: Edition): string {
   if (f.key === "priority_support" && supportDays(e) > 0) {
     return `Priority bug-fix support for ${supportDays(e)} days after handover`;
+  }
+  if (f.key === "customer_emails" && notifyDays(e) > 0) {
+    const m = notifyMonths(e);
+    return `Automatic customer email notifications for ${m} month${m === 1 ? "" : "s"} after handover`;
   }
   return f.label;
 }

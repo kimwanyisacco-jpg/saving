@@ -78,6 +78,9 @@ export async function seedDemo(edition: Edition, opts: { reset?: boolean } = {})
   await setSetting("business_email", p.email, staffIds[0]);
   await setSetting("business_logo_text", p.logo_text, staffIds[0]);
   await setSetting("business_footer_note", p.footer_note, staffIds[0]);
+  // A seeded business is presented as already handed over, so the package's
+  // customer-email window is open from the day the dataset was generated.
+  await setSetting("handover_on", String(data.generated_at).slice(0, 10), staffIds[0]);
 
   await audit(staffIds[0], "setup.demo_seeded", null, null, { edition, customers: data.customers.length, transactions: rows.length });
 

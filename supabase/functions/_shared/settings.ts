@@ -14,6 +14,7 @@ const DEFAULTS: Record<string, string> = {
   business_email: env.business.email || "",
   business_logo_text: env.business.logo_text || "",
   business_footer_note: "Balances are calculated from recorded transactions.",
+  handover_on: "",
 };
 
 let ensured: Promise<unknown> | null = null;

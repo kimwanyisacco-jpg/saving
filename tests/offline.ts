@@ -42,11 +42,27 @@ console.log("\n# package terms");
   ok("classic lists support", hasFeature(support, "classic"), true);
   ok("enhanced lists support", hasFeature(support, "enhanced"), true);
 
+  // Customer email notifications are sold in months: Classic 1, Enhanced 2.
+  const { notifyDays, notifyLabel } = await import("../supabase/functions/_shared/domain/editions.ts");
+  const emails = FEATURES.find((f) => f.key === "customer_emails")!;
+  ok("basic has no email window", notifyDays("basic"), 0);
+  ok("classic email window is 30 days", notifyDays("classic"), 30);
+  ok("enhanced email window is 60 days", notifyDays("enhanced"), 60);
+  ok("classic reads as 1 month", notifyLabel("classic"), "1 month");
+  ok("enhanced reads as 2 months", notifyLabel("enhanced"), "2 months");
+  ok("emails start at Classic", emails.min, "classic");
+  ok("classic email label names 1 month", featureLabel(emails, "classic"), "Automatic customer email notifications for 1 month after handover");
+  ok("enhanced email label names 2 months", featureLabel(emails, "enhanced"), "Automatic customer email notifications for 2 months after handover");
+  ok("basic does not list emails", hasFeature(emails, "basic"), false);
+  ok("classic lists emails", hasFeature(emails, "classic"), true);
+
   // The licence the browser demo issues must carry the same term.
   call("POST", "setup/demo", { edition: "classic" });
   const { actor } = signIn("classic");
   ok("demo licence carries the term", call("GET", "auth/me", undefined, actor).body.capabilities.supportDays, 30);
   ok("price list carries the term", EDITION_META.classic.support_days, 30);
+  ok("demo licence carries the email entitlement", call("GET", "auth/me", undefined, actor).body.capabilities.customerEmails, true);
+  ok("price list carries the email window", EDITION_META.classic.notify_days, 30);
 }
 
 console.log("\n# package gates");
@@ -129,6 +145,39 @@ console.log("\n# reference numbers are issued by the system");
   }
   const seeded = call("GET", "transactions?limit=200", undefined, actor).body.transactions;
   ok("seeded records all have a reference", seeded.every((t: any) => !!t.reference), true);
+}
+
+console.log("\n# customer email notifications");
+{
+  call("POST", "setup/demo", { edition: "classic" });
+  const { actor } = signIn("classic");
+
+  // Registering a customer emails them their number.
+  const created = call("POST", "customers", { name: "Notify Test", email: "notify@example.com" }, actor).body.customer;
+  let out = call("GET", "admin/notifications", undefined, actor).body;
+  ok("registration queues one message", out.notifications.length, 1);
+  ok("registration message goes to the customer", out.notifications[0].recipient, "notify@example.com");
+  ok("registration message names the number", out.notifications[0].subject.includes(created.code), true);
+
+  // Recording a transaction emails the customer a receipt. Use the customer that
+  // has an email; the seeded ones may not, and no address means no message.
+  call("POST", "transactions", { customer_id: created.id, kind: "savings_deposit", amount: 5000, occurred_on: "2026-11-02" }, actor);
+  out = call("GET", "admin/notifications", undefined, actor).body;
+  ok("deposit queues a receipt", out.notifications.length, 2);
+  ok("receipt is the newest", out.notifications[0].kind, "transaction_recorded");
+  ok("receipt names the amount", out.notifications[0].body.includes("UGX 5,000"), true);
+  ok("the window is open on Classic", out.status.open, true);
+  ok("the window closes 30 days after handover", out.status.window_ends_on.slice(0, 4), out.status.handover_on.slice(0, 4));
+
+  // A customer with no email is simply not messaged.
+  call("POST", "customers", { name: "No Email" }, actor);
+  ok("customer without an email gets nothing", call("GET", "admin/notifications", undefined, actor).body.notifications.length, 2);
+
+  // Moving the handover date forward closes the window.
+  call("PUT", "admin/settings", { handover_on: "2020-01-01" }, actor);
+  ok("an old handover closes the window", call("GET", "admin/notifications", undefined, actor).body.status.open, false);
+  call("POST", "transactions", { customer_id: created.id, kind: "savings_deposit", amount: 1000, occurred_on: "2026-11-02" }, actor);
+  ok("nothing is sent once closed", call("GET", "admin/notifications", undefined, actor).body.notifications.length, 2);
 }
 
 console.log("\n# import keeps the file's reference");

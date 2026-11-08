@@ -12,6 +12,8 @@ export const env = {
   demoMode: g("DEMO_MODE") !== "false",
   defaultEdition: (g("EDITION") || "classic").toLowerCase(),
   seedOnBoot: g("SEED_DEMO") === "true",
+  resendApiKey: g("RESEND_API_KEY"),
+  mailFrom: g("MAIL_FROM"),
   business: {
     name: g("BUSINESS_NAME"),
     address: g("BUSINESS_ADDRESS"),
