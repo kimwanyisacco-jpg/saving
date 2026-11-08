@@ -122,9 +122,19 @@ production and keep it safe: without it, encrypted columns cannot be read.
 cd web && npm install && npm run build   # writes web/out
 ```
 
-- **Vercel**: import the repository and leave the **Root Directory** as the repo
-  root. `vercel.json` at the root installs `web/`, builds the static export and
-  publishes `web/out`.
+- **Vercel**: import the repository. Both Root Directory settings work, because
+  each carries its own `vercel.json`:
+  - Leave **Root Directory** as the repo root (the default). `vercel.json` at the
+    root runs `npm --prefix web install` and `npm --prefix web run build`, and
+    publishes `web/out`.
+  - Or set **Root Directory** to `web`. `web/vercel.json` then runs `npm install`
+    and `npm run build`, and publishes `out`.
+
+  Set **Framework Preset** to `Other`; the config already sets `framework: null`.
+  Do not set Root Directory to `web` while relying on the root `vercel.json`.
+  Vercel reads `vercel.json` from the Root Directory, so a root config containing
+  `cd web` would run inside `web` and fail with
+  `cd: web: No such file or directory`.
 - **Any static host**: upload `web/out`.
 
 Set `NEXT_PUBLIC_API_URL` to your deployed API (`https://<project-ref>.supabase.co/functions/v1`)

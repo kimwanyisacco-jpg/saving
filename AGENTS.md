@@ -36,6 +36,14 @@ deno run -A --sloppy-imports tests/offline.ts        # no backend needed
 API_URL=http://localhost:8000 deno run -A tests/e2e.ts
 ```
 
+## Deploying the web app
+- Two `vercel.json` files exist on purpose: one at the repo root (Root Directory
+  = repo root) and one in `web/` (Root Directory = `web`). Vercel reads the config
+  from the Root Directory, so both layouts work. Keep them in step if either
+  command changes.
+- Use `npm --prefix web ...` at the root rather than `cd web && ...`; it does not
+  depend on the shell's working directory.
+
 ## Conventions
 - The server, the tests and the browser demo must run the **same** logic. Put
   shared maths in `_shared/domain/` and import it from `web/lib/` — do not
