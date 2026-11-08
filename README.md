@@ -24,6 +24,25 @@ so the pricing page and the licence check always agree.
 - `web/` - the Next.js app. It is a static export, so it hosts anywhere.
 - `scripts/reset_local_db.sh` - drops and recreates the local database.
 
+## Receipt numbers and references
+
+Every transaction gets two identifiers from the system, so an operator never
+types one:
+
+- a receipt number, `R-100496`, drawn from the `receipt_seq` sequence; and
+- a reference, `DEP-100496`, which puts the kind of movement (`DEP`, `WDR`,
+  `CRD`, `RPY`) in front of the same sequence number.
+
+Both come from one sequence, so a reference and its receipt always agree, and the
+reference says at a glance what the money did. The rule lives in
+`domain/refs.ts`, and the server, the offline demo and the seeded dataset all
+use it.
+
+A reference typed on the transaction form is ignored, and an amendment cannot
+change one. The one exception is a spreadsheet import: a file may carry an old
+book reference, and that value is kept so the record can be reconciled against
+the old book. A row with no reference is given one by the system.
+
 ## Package control
 
 The licensed package is one row in `app_settings` and is read on every request.

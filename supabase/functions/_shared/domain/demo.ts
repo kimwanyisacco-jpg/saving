@@ -2,6 +2,7 @@
 // powers the browser-only demo, so what a prospect sees offline is exactly what
 // the live API returns.
 import type { BusinessProfile, Customer, Edition, Transaction, TxKind, TxMethod } from "./types.ts";
+import { referenceFor } from "./refs.ts";
 import { EDITION_META } from "./editions.ts";
 import { addDays, addMonths, today } from "./dates.ts";
 
@@ -170,7 +171,6 @@ export function buildDemoDataset(edition: Edition): DemoDataset {
 function methods(pick: <T>(l: readonly T[]) => T): TxMethod { return pick(METHODS); }
 
 function tx(rand: () => number, id: string, customer_id: string, kind: TxKind, amount: number, occurred_on: string, method: TxMethod, note: string, receipt: number): Transaction {
-  const prefix = kind === "savings_deposit" ? "DEP" : kind === "savings_withdrawal" ? "WDR" : kind === "credit_issued" ? "CRD" : "RPY";
   return {
     id,
     customer_id,
@@ -178,7 +178,7 @@ function tx(rand: () => number, id: string, customer_id: string, kind: TxKind, a
     amount,
     occurred_on,
     method,
-    reference: `${prefix}-${String(receipt).slice(-5)}`,
+    reference: referenceFor(kind, receipt),
     note,
     receipt_no: "R-" + receipt,
     recorded_by: null,

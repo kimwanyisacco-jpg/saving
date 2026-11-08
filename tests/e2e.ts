@@ -86,6 +86,34 @@ console.log("\n# balances are derived from transactions");
   ok("savings after restore", b.savings, 250000);
 }
 
+console.log("\n# reference numbers are issued by the system");
+{
+  const token = await seed("enhanced");
+  const id = (await req("GET", "/customers?limit=1", { token })).body.customers[0].id;
+
+  // A reference typed by a caller must be ignored.
+  const deposit = await req("POST", "/transactions", { token, body: { customer_id: id, kind: "savings_deposit", amount: 5000, occurred_on: "2026-11-02", method: "cash", reference: "HACKED-1" } });
+  const tx = deposit.body.transaction;
+  ok("reference is issued, not accepted", tx.reference.startsWith("HACKED"), false);
+  ok("deposit reference prefix", tx.reference.startsWith("DEP-"), true);
+  ok("reference agrees with the receipt", tx.reference.slice(4), String(tx.receipt_no).replace("R-", ""));
+
+  const prefixes: Record<string, string> = { savings_withdrawal: "WDR", credit_issued: "CRD", credit_repayment: "RPY" };
+  for (const [kind, prefix] of Object.entries(prefixes)) {
+    const r = await req("POST", "/transactions", { token, body: { customer_id: id, kind, amount: 1000, occurred_on: "2026-11-02", method: "cash" } });
+    ok(`${kind} reference prefix`, r.body.transaction.reference.startsWith(prefix + "-"), true);
+  }
+
+  // An amendment must not be able to rewrite the reference.
+  const amended = await req("PATCH", `/transactions/${tx.id}`, { token, body: { reference: "CHANGED-9", note: "edited", reason: "correct the note" } });
+  ok("amendment keeps the reference", amended.body.transaction.reference, tx.reference);
+  ok("amendment still applies the note", amended.body.transaction.note, "edited");
+
+  // Every seeded record already carries one, so the migration has nothing to do.
+  const seeded = (await req("GET", "/transactions?limit=200", { token })).body.transactions;
+  ok("seeded records all have a reference", seeded.every((t: any) => !!t.reference), true);
+}
+
 console.log("\n# input validation and access control");
 {
   const token = await seed("enhanced");
@@ -152,7 +180,16 @@ console.log("\n# import (Enhanced)");
   ok("commit accepted both", commit.body.imported, 2);
   ok("commit created the customers", commit.body.created_customers, 2);
   ok("imported rows are on file", (await req("GET", "/customers?q=Imported%20One", { token })).body.customers.length, 1);
-  ok("imported transaction is recorded", (await req("GET", "/transactions?q=DEP-90001", { token })).body.transactions.length, 1);
+  const imported = (await req("GET", "/transactions?q=DEP-90001", { token })).body.transactions;
+  ok("imported transaction is recorded", imported.length, 1);
+  ok("import keeps the file's reference", imported[0]?.reference, "DEP-90001");
+  ok("import still issues a receipt", /^R-\d+$/.test(String(imported[0]?.receipt_no)), true);
+
+  // A row with no reference gets one from the system, so nothing is left blank.
+  const noRef = await req("POST", "/import/commit", { token, body: { csv: ["Customer,Type,Amount,Date", "Imported Three,Savings deposit,1000,2026-10-03"].join("\n") } });
+  ok("row without a reference still imports", noRef.body.imported, 1);
+  const issued = (await req("GET", "/transactions?q=Imported%20Three", { token })).body.transactions;
+  ok("missing reference is issued by the system", /^DEP-\d+$/.test(String(issued[0]?.reference)), true);
 }
 
 console.log("\n# statements");

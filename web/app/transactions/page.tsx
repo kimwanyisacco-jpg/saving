@@ -212,7 +212,7 @@ function NewTransaction({ initialCustomerId, onDone }: { initialCustomerId?: str
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [form, setForm] = useState({
     customer_id: initialCustomerId ?? "", kind: "savings_deposit" as Kind, amount: "",
-    occurred_on: today(), method: "cash", reference: "", note: "",
+    occurred_on: today(), method: "cash", note: "",
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -252,11 +252,10 @@ function NewTransaction({ initialCustomerId, onDone }: { initialCustomerId?: str
             {Object.entries(METHOD_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </Field>
-        <Field label="Reference"><input className="input" value={form.reference} onChange={(e) => setForm((f) => ({ ...f, reference: e.target.value }))} placeholder="Receipt book number" /></Field>
-        <div className="lg:col-span-2"><Field label="Note"><input className="input" value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} placeholder="What this money was for" /></Field></div>
+        <div className="lg:col-span-3"><Field label="Note"><input className="input" value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} placeholder="What this money was for" /></Field></div>
         <div className="flex items-end"><button className="btn-primary w-full" disabled={busy}>{busy ? <Spinner label="" /> : null} Save transaction</button></div>
       </form>
-      <p className="mt-3 text-xs text-ink-mute">A receipt number is issued automatically. Balances update as soon as you save.</p>
+      <p className="mt-3 text-xs text-ink-mute">A receipt number and reference are issued by the system when you save, so every record can be quoted on a statement. Balances update straight away.</p>
     </Card>
   );
 }

@@ -6,6 +6,7 @@ import { buildDemoDataset, demoAccounts } from "../../supabase/functions/_shared
 import { EDITION_META, EDITIONS, editionCapabilities, hasCap, CAPS } from "../../supabase/functions/_shared/domain/editions";
 import { balances, customerActivity, monthlySeries, statementLines } from "../../supabase/functions/_shared/domain/compute";
 import { buildStatement, statementFileName } from "../../supabase/functions/_shared/domain/statement";
+import { referenceFor } from "../../supabase/functions/_shared/domain/refs";
 import { addMonths, today, toISODate } from "../../supabase/functions/_shared/domain/dates";
 import type { BusinessProfile, Customer, Edition, Transaction, TxKind, TxMethod } from "../../supabase/functions/_shared/domain/types";
 
@@ -111,12 +112,12 @@ export interface DemoResponse { status: number; body: any; blob?: Blob; filename
 const ok = (body: any): DemoResponse => ({ status: 200, body });
 const err = (status: number, error: string, code = "error"): DemoResponse => ({ status, body: { error, code } });
 
-function nextReceipt(s: DemoState) {
-  const max = s.transactions.reduce((a, t) => {
+/** The next receipt sequence, shared by the receipt number and the reference. */
+function nextReceiptSeq(s: DemoState) {
+  return s.transactions.reduce((a, t) => {
     const m = /^R-(\d+)$/.exec(t.receipt_no ?? "");
     return m ? Math.max(a, Number(m[1])) : a;
-  }, 100000);
-  return "R-" + (max + 1);
+  }, 100000) + 1;
 }
 
 function nextCode(s: DemoState) {
@@ -274,11 +275,12 @@ export function handle(method: string, path: string, body: any, actor?: Actor): 
     if (parts.length === 1 && method === "POST") {
       const amount = Math.round(Number(String(body.amount ?? "").replace(/[^0-9.]/g, "")) || 0);
       if (!(amount > 0)) return err(400, "Enter the amount in shillings.", "validation");
+      const seq = nextReceiptSeq(s);
       const t: Transaction = {
         id: uuid(), customer_id: body.customer_id, kind: body.kind, amount,
         occurred_on: body.occurred_on || today(), method: body.method || "cash",
-        reference: body.reference || null, note: body.note || null,
-        receipt_no: nextReceipt(s), recorded_by: actor?.id ?? s.staff[0].id,
+        reference: referenceFor(body.kind as TxKind, seq), note: body.note || null,
+        receipt_no: "R-" + seq, recorded_by: actor?.id ?? s.staff[0].id,
         created_at: new Date().toISOString(), voided_at: null, void_reason: null,
       };
       s.transactions.push(t); saveState(s);
@@ -379,7 +381,8 @@ export function handle(method: string, path: string, body: any, actor?: Actor): 
           c = { id: uuid(), code: nextCode(s), name: r.customer, phone: r.phone || null, email: null, national_id: null, address: null, joined_on: today(), status: "active", notes: "Created during spreadsheet import", created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
           s.customers.push(c); created++;
         }
-        s.transactions.push({ id: uuid(), customer_id: c.id, kind: r.kind as TxKind, amount: r.amount, occurred_on: r.date, method: r.method, reference: r.reference || null, note: r.note || "Imported from spreadsheet", receipt_no: nextReceipt(s), recorded_by: actor?.id ?? s.staff[0].id, created_at: new Date().toISOString(), voided_at: null, void_reason: null });
+        const seq = nextReceiptSeq(s);
+        s.transactions.push({ id: uuid(), customer_id: c.id, kind: r.kind as TxKind, amount: r.amount, occurred_on: r.date, method: r.method, reference: r.reference || referenceFor(r.kind as TxKind, seq), note: r.note || "Imported from spreadsheet", receipt_no: "R-" + seq, recorded_by: actor?.id ?? s.staff[0].id, created_at: new Date().toISOString(), voided_at: null, void_reason: null });
         imported++;
       }
       saveState(s);

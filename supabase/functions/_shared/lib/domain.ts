@@ -4,6 +4,7 @@ import { sql, type Row } from "../db.ts";
 import { fail } from "../http.ts";
 import { audit } from "../audit.ts";
 import { balances, customerActivity, monthlySeries, statementLines } from "../domain/compute.ts";
+import { referenceFor, receiptSequence } from "../domain/refs.ts";
 import type { Customer, Transaction, TxKind, TxMethod, CustomerStatus, DashboardTotals } from "../domain/types.ts";
 import type { PeriodRow } from "../domain/compute.ts";
 import { toISODate, toISOStamp, today } from "../domain/dates.ts";
@@ -117,7 +118,10 @@ export async function getTransaction(id: string): Promise<Transaction> {
 
 export interface TxInput {
   customer_id: string; kind: TxKind; amount: number; occurred_on?: string;
-  method?: TxMethod; reference?: string | null; note?: string | null;
+  method?: TxMethod; note?: string | null;
+  /** Carried over from an imported file, so the old book reference survives for
+   *  reconciliation. A reference typed at the counter is never accepted. */
+  reference?: string | null;
 }
 
 export async function createTransaction(input: TxInput, actorId: string): Promise<Transaction> {
@@ -128,6 +132,14 @@ export async function createTransaction(input: TxInput, actorId: string): Promis
             ${input.method ?? "cash"}, ${input.reference ?? null}, ${input.note ?? null}, ${actorId},
             'R-' || nextval('receipt_seq'))
     returning *`;
+  // With no reference from an imported file, the system issues one, derived from
+  // the receipt the insert just drew so the two always agree.
+  if (r.reference == null) {
+    const [withRef] = await sql`
+      update transactions set reference = ${referenceFor(r.kind as TxKind, receiptSequence(r.receipt_no) ?? 0)}
+      where id = ${r.id} returning *`;
+    Object.assign(r, withRef);
+  }
   await audit(actorId, "transaction.created", "transaction", r.id, { kind: r.kind, amount: num(r.amount) });
   return toTransaction(r);
 }
@@ -155,14 +167,13 @@ export async function restoreTransaction(id: string, reason: string, actorId: st
   return toTransaction(r);
 }
 
-export async function amendTransaction(id: string, patch: { amount?: number; occurred_on?: string; method?: TxMethod; reference?: string | null; note?: string | null }, reason: string, actorId: string): Promise<Transaction> {
+export async function amendTransaction(id: string, patch: { amount?: number; occurred_on?: string; method?: TxMethod; note?: string | null }, reason: string, actorId: string): Promise<Transaction> {
   const before = await getTransaction(id);
   const [r] = await sql`
     update transactions set
       amount = ${patch.amount ?? before.amount},
       occurred_on = ${patch.occurred_on || before.occurred_on},
       method = ${patch.method ?? before.method},
-      reference = ${patch.reference === undefined ? before.reference : patch.reference},
       note = ${patch.note === undefined ? before.note : patch.note}
     where id = ${id} returning *`;
   await recordCorrection(id, "amend", before as unknown as Row, toTransaction(r) as unknown as Row, reason, actorId);

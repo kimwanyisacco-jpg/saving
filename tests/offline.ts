@@ -91,6 +91,39 @@ console.log("\n# balances are derived from transactions");
   ok("savings after restore", b.savings, 250000);
 }
 
+console.log("\n# reference numbers are issued by the system");
+{
+  call("POST", "setup/demo", { edition: "enhanced" });
+  const { actor } = signIn("enhanced");
+  const id = call("GET", "customers?limit=1", undefined, actor).body.customers[0].id;
+  const dep = call("POST", "transactions", { customer_id: id, kind: "savings_deposit", amount: 5000, occurred_on: "2026-11-02", method: "cash", reference: "HACKED-1" }, actor);
+  const tx = dep.body.transaction;
+  ok("reference is issued, not accepted", tx.reference.startsWith("HACKED"), false);
+  ok("deposit reference prefix", tx.reference.startsWith("DEP-"), true);
+  ok("reference agrees with the receipt", tx.reference.slice(4), String(tx.receipt_no).replace("R-", ""));
+  for (const [kind, prefix] of Object.entries({ savings_withdrawal: "WDR", credit_issued: "CRD", credit_repayment: "RPY" })) {
+    const r = call("POST", "transactions", { customer_id: id, kind, amount: 1000, occurred_on: "2026-11-02", method: "cash" }, actor);
+    ok(`${kind} reference prefix`, r.body.transaction.reference.startsWith(prefix + "-"), true);
+  }
+  const seeded = call("GET", "transactions?limit=200", undefined, actor).body.transactions;
+  ok("seeded records all have a reference", seeded.every((t: any) => !!t.reference), true);
+}
+
+console.log("\n# import keeps the file's reference");
+{
+  call("POST", "setup/demo", { edition: "enhanced" });
+  const { actor } = signIn("enhanced");
+  const csv = ["Customer,Type,Amount,Date,Reference", "Imported One,Savings deposit,50000,2026-10-01,DEP-90001"].join("\n");
+  const commit = call("POST", "import/commit", { csv }, actor);
+  ok("row imports", commit.body.imported, 1);
+  const imported = call("GET", "transactions?q=DEP-90001", undefined, actor).body.transactions;
+  ok("import keeps the file's reference", imported[0]?.reference, "DEP-90001");
+  const noRef = call("POST", "import/commit", { csv: ["Customer,Type,Amount,Date", "Imported Two,Savings deposit,1000,2026-10-03"].join("\n") }, actor);
+  ok("row without a reference still imports", noRef.body.imported, 1);
+  const issued = call("GET", "transactions?q=Imported%20Two", undefined, actor).body.transactions;
+  ok("missing reference is issued by the system", /^DEP-\d+$/.test(String(issued[0]?.reference)), true);
+}
+
 console.log("\n# statements render the package's own business");
 {
   call("POST", "setup/demo", { edition: "enhanced" });

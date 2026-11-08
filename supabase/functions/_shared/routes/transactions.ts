@@ -57,7 +57,6 @@ transactions.post("/transactions", async (c) => {
     amount: amount(b.amount),
     occurred_on: isoDate(b.occurred_on, "date", { optional: true }) || undefined,
     method: oneOf<TxMethod>(b.method, "method", METHODS, "cash"),
-    reference: str(b.reference, "reference", { optional: true, max: 60 }) || null,
     note: str(b.note, "note", { optional: true, max: 400 }) || null,
   }, c.get("user").id);
   return c.json({ transaction: tx }, 201);
@@ -115,7 +114,6 @@ transactions.patch("/transactions/:id", async (c) => {
     amount: b.amount === undefined ? undefined : amount(b.amount),
     occurred_on: isoDate(b.occurred_on, "date", { optional: true }) || undefined,
     method: b.method === undefined ? undefined : oneOf<TxMethod>(b.method, "method", METHODS),
-    reference: b.reference === undefined ? undefined : (str(b.reference, "reference", { optional: true, max: 60 }) || null),
     note: b.note === undefined ? undefined : (str(b.note, "note", { optional: true, max: 400 }) || null),
   }, reason, c.get("user").id);
   return c.json({ transaction: tx });
