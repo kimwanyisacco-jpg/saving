@@ -30,11 +30,21 @@ export interface Message {
   entry: { kind: string; recipient: string; subject: string; body: string; customer_id: string; transaction_id: string | null; provider: string; status: string; error: string | null };
 }
 
+/** How each record reads in the subject line, as a noun. */
 const KIND_LABEL: Record<string, string> = {
   savings_deposit: "savings deposit",
   savings_withdrawal: "savings withdrawal",
   credit_issued: "credit issued",
   credit_repayment: "credit repayment",
+};
+
+/** The same record as a full sentence, so "credit issued" does not read as
+ *  "a credit issued of UGX ...". */
+const KIND_SENTENCE: Record<string, (amount: string) => string> = {
+  savings_deposit: (m) => `We have recorded a savings deposit of ${m} on your account.`,
+  savings_withdrawal: (m) => `We have recorded a savings withdrawal of ${m} on your account.`,
+  credit_issued: (m) => `We have issued credit of ${m} to your account.`,
+  credit_repayment: (m) => `We have recorded a credit repayment of ${m} on your account.`,
 };
 
 const METHOD_LABEL: Record<string, string> = {
@@ -101,11 +111,12 @@ export function customerWelcome(ctx: NotifyContext, customer: Customer): Message
 export function transactionReceipt(ctx: NotifyContext, customer: Customer, tx: Transaction): Message | null {
   if (!customer.email) return null;
   const what = KIND_LABEL[tx.kind] ?? tx.kind;
+  const sentence = (KIND_SENTENCE[tx.kind] ?? ((m: string) => `We have recorded ${what} of ${m} on your account.`))(money(tx.amount));
   const subject = `${ctx.business_name}: ${money(tx.amount)} ${what} (${tx.reference ?? tx.receipt_no ?? ""})`.trim();
   const body = wrap(ctx, [
     `Dear ${customer.name},`,
     "",
-    `We have recorded a ${what} of ${money(tx.amount)} on your account.`,
+    sentence,
     "",
     `Date: ${formatDate(tx.occurred_on)}`,
     `Reference: ${tx.reference ?? "-"}`,
