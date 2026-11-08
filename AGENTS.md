@@ -49,6 +49,10 @@ API_URL=http://localhost:8000 deno run -A tests/e2e.ts
   reset.
 - Balances are always derived from live (non-voided) transactions. Never store
   a running balance.
+- Receipt numbers and references are issued by the system (`domain/refs.ts`): a
+  reference is the kind prefix plus the receipt sequence, so the two agree. A
+  form must never send a reference; only a spreadsheet import may carry one, so
+  an old book reference survives.
 - Deno needs `--sloppy-imports` to load `web/lib/demo.ts`, because the web app
   imports the shared modules without a `.ts` extension.
 - `tests/e2e.ts` reseeds each package before checking it, so it is repeatable
