@@ -27,6 +27,28 @@ const signIn = (edition: string) => {
   return { token: r.body.token, actor: { id: r.body.user.id, name: r.body.user.name } };
 };
 
+console.log("\n# package terms");
+{
+  const { EDITION_META, FEATURES, featureLabel, hasFeature, supportDays } = await import("../supabase/functions/_shared/domain/editions.ts");
+  ok("basic has no support", supportDays("basic"), 0);
+  ok("classic support is 30 days", supportDays("classic"), 30);
+  ok("enhanced support is 60 days", supportDays("enhanced"), 60);
+  const support = FEATURES.find((f) => f.key === "priority_support")!;
+  ok("support starts at Classic", support.min, "classic");
+  ok("classic label names 30 days", featureLabel(support, "classic"), "Priority bug-fix support for 30 days after handover");
+  ok("enhanced label names 60 days", featureLabel(support, "enhanced"), "Priority bug-fix support for 60 days after handover");
+  // Basic must not read the support line as included just because it starts at Classic.
+  ok("basic does not list support", hasFeature(support, "basic"), false);
+  ok("classic lists support", hasFeature(support, "classic"), true);
+  ok("enhanced lists support", hasFeature(support, "enhanced"), true);
+
+  // The licence the browser demo issues must carry the same term.
+  call("POST", "setup/demo", { edition: "classic" });
+  const { actor } = signIn("classic");
+  ok("demo licence carries the term", call("GET", "auth/me", undefined, actor).body.capabilities.supportDays, 30);
+  ok("price list carries the term", EDITION_META.classic.support_days, 30);
+}
+
 console.log("\n# package gates");
 {
   const want: Record<string, Record<string, number>> = {

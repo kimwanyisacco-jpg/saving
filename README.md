@@ -8,11 +8,22 @@ Built to the GSS quotation of 1 November 2026, which sells three packages:
 | Package | Price (UGX) | Scope |
 | --- | --- | --- |
 | Basic | 900,000 | Admin login, customers, savings and credit entries, basic statement PDF, dashboard totals |
-| Classic | 1,500,000 | Adds customer profiles, separate savings/credit balances, statement by date range, CSV export, backup and correction history |
-| Enhanced | 2,300,000 | Adds date-filtered reports, activity and outstanding-credit reports, spreadsheet import, better search |
+| Classic | 1,500,000 | Adds customer profiles, separate savings/credit balances, statement by date range, CSV export, backup and correction history, **30 days priority bug-fix support** |
+| Enhanced | 2,300,000 | Adds date-filtered reports, activity and outstanding-credit reports, spreadsheet import, better search, **60 days priority bug-fix support** |
 
-Prices and delivery times live in `supabase/functions/_shared/domain/editions.ts`,
-so the pricing page and the licence check always agree.
+Prices, delivery times and the support term live in
+`supabase/functions/_shared/domain/editions.ts`, so the pricing page and the
+licence check always agree.
+
+## Support after handover
+
+Each package carries a priority bug-fix window, counted from handover: Classic
+30 days, Enhanced 60 days, Basic none. The term is a property of the package
+(`support_days`), not a fixed bullet, because the two differ. It is served on the
+licence (`GET /auth/me`, `GET /settings/public`), on the price list
+(`GET /editions`) and on the Admin package screen, so the client sees the same
+number everywhere. A fix inside the window is a correction to what was sold; new
+features are out of scope and must be agreed in writing.
 
 ## What is in the box
 

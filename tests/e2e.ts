@@ -33,6 +33,26 @@ async function seed(edition: string): Promise<string> {
   return l.body.token as string;
 }
 
+console.log("\n# package terms");
+{
+  const { editions, features } = (await req("GET", "/editions")).body;
+  const by = Object.fromEntries(editions.map((e: any) => [e.id, e]));
+  ok("basic support term", by.basic.support_days, 0);
+  ok("classic support term is 30 days", by.classic.support_days, 30);
+  ok("enhanced support term is 60 days", by.enhanced.support_days, 60);
+
+  const support = features.find((f: any) => f.key === "priority_support");
+  ok("support is a Classic feature", support.min, "classic");
+
+  // The 30-day term must show on the licence itself, not only in the price list.
+  const token = await seed("classic");
+  const me = await req("GET", "/auth/me", { token });
+  ok("classic capabilities carry the term", me.body.capabilities.supportDays, 30);
+  ok("classic is not the Enhanced package", me.body.edition, "classic");
+  const basic = await req("GET", "/settings/public", { token: await seed("basic") });
+  ok("basic has no support term", basic.body.capabilities.supportDays, 0);
+}
+
 console.log("\n# package gates");
 {
   const want: Record<string, Record<string, number>> = {

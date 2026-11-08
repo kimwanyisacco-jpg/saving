@@ -5,7 +5,7 @@ import { Check, Minus, Wallet, Printer, Upload, ShieldCheck, Users, BarChart3 } 
 import { Brand, EditionBadge, Spinner } from "@/components/ui";
 import { api, OFFLINE, setSession } from "@/lib/api";
 import { formatUGX } from "@/lib/format";
-import { EDITIONS, EDITION_META, FEATURES, includes } from "../../supabase/functions/_shared/domain/editions";
+import { EDITIONS, EDITION_META, FEATURES, featureLabel, hasFeature } from "../../supabase/functions/_shared/domain/editions";
 import { demoAccounts } from "../../supabase/functions/_shared/domain/demo";
 import type { Edition } from "../../supabase/functions/_shared/domain/types";
 
@@ -126,11 +126,11 @@ export default function Home() {
                   </button>
                   <ul className="mt-5 space-y-2">
                     {FEATURES.map((f) => {
-                      const has = includes(edition, f.min);
+                      const has = hasFeature(f, edition);
                       return (
                         <li key={f.key} className={`flex gap-2 text-sm ${has ? "text-ink" : "text-ink-mute"}`}>
                           {has ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" /> : <Minus className="mt-0.5 h-4 w-4 shrink-0 text-sand-300" />}
-                          <span>{f.label}</span>
+                          <span>{featureLabel(f, edition)}</span>
                         </li>
                       );
                     })}
@@ -194,7 +194,7 @@ export default function Home() {
                   <li>Statements of account and dashboard summaries per package</li>
                   <li>CSV export, backup and transaction correction history (Classic and above)</li>
                   <li>Date-filtered reports and spreadsheet import (Enhanced)</li>
-                  <li>Hosting setup, data import guidance and priority bug-fix support (Enhanced: 60 days)</li>
+                  <li>Hosting setup, data import guidance and priority bug-fix support (Classic: 30 days, Enhanced: 60 days)</li>
                 </ul>
               </div>
               <div>

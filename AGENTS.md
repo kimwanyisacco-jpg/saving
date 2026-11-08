@@ -49,6 +49,10 @@ API_URL=http://localhost:8000 deno run -A tests/e2e.ts
   reset.
 - Balances are always derived from live (non-voided) transactions. Never store
   a running balance.
+- Each package carries a priority bug-fix window from handover: Classic 30
+  days, Enhanced 60, Basic none. It lives as `support_days` on the edition, not
+  as a fixed feature bullet, because the term differs by package. Change it in
+  `editions.ts` only; the pricing page, Admin screen and licence all read it.
 - Receipt numbers and references are issued by the system (`domain/refs.ts`): a
   reference is the kind prefix plus the receipt sequence, so the two agree. A
   form must never send a reference; only a spreadsheet import may carry one, so

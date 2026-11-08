@@ -6,7 +6,7 @@ import { Card, EditionBadge, Field, Notice, Spinner, Tile, Upgrade, useToast } f
 import { useApi } from "@/lib/useApi";
 import { api, download, getSession, setSession, OFFLINE } from "@/lib/api";
 import { formatDate, formatNumber, formatUGX } from "@/lib/format";
-import { EDITION_META, EDITIONS, FEATURES } from "../../../supabase/functions/_shared/domain/editions";
+import { EDITION_META, EDITIONS, FEATURES, featureLabel } from "../../../supabase/functions/_shared/domain/editions";
 import type { BusinessProfile, Edition } from "../../../supabase/functions/_shared/domain/types";
 
 interface Overview {
@@ -140,7 +140,7 @@ function EditionPanel({ current, settings, onSaved, toast }: { current: Edition;
                 <span>
                   <span className="flex items-center gap-2"><span className="font-semibold text-ink">{EDITION_META[e].name}</span>{EDITION_META[e].recommended && <span className="chip bg-brand-600 text-white">Recommended</span>}</span>
                   <span className="mt-0.5 block text-xs text-ink-mute">{EDITION_META[e].tagline} · {formatUGX(EDITION_META[e].price_ugx)}</span>
-                  <span className="mt-1 block text-xs text-ink-soft">{FEATURES.filter((f) => f.min === e).map((f) => f.label).join(" · ")}</span>
+                  <span className="mt-1 block text-xs text-ink-soft">{FEATURES.filter((f) => f.min === e).map((f) => featureLabel(f, e)).join(" · ")}</span>
                 </span>
               </label>
             ))}

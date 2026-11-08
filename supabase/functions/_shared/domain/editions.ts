@@ -15,28 +15,31 @@ export interface EditionMeta {
   handover_ugx: number;
   delivery_days: string;
   recommended: boolean;
+  /** Days of priority bug-fix support after handover. Zero means none. */
+  support_days: number;
 }
 
 export const EDITION_META: Record<Edition, EditionMeta> = {
   basic: {
     id: "basic", name: "Basic", tagline: "For simple record keeping",
     price_ugx: 900_000, deposit_ugx: 450_000, demo_ugx: 270_000, handover_ugx: 180_000,
-    delivery_days: "5-7 working days", recommended: false,
+    delivery_days: "5-7 working days", recommended: false, support_days: 0,
   },
   classic: {
     id: "classic", name: "Classic", tagline: "For a growing business",
     price_ugx: 1_500_000, deposit_ugx: 750_000, demo_ugx: 450_000, handover_ugx: 300_000,
-    delivery_days: "1-2 weeks", recommended: true,
+    delivery_days: "1-2 weeks", recommended: true, support_days: 30,
   },
   enhanced: {
     id: "enhanced", name: "Enhanced", tagline: "For broader reporting needs",
     price_ugx: 2_300_000, deposit_ugx: 1_150_000, demo_ugx: 690_000, handover_ugx: 460_000,
-    delivery_days: "2-3 weeks", recommended: false,
+    delivery_days: "2-3 weeks", recommended: false, support_days: 60,
   },
 };
 
-/** Ordered feature list, exactly as written in the quotation. `min` is the lowest
- *  edition that includes the feature, which is what the pricing page renders. */
+/** Ordered feature list. `min` is the lowest edition that includes the feature,
+ *  which is what the pricing page renders. The support term differs by package,
+ *  so it is carried on the edition (see `supportDays`) and not in this label. */
 export interface Feature {
   key: string;
   label: string;
@@ -61,7 +64,7 @@ export const FEATURES: readonly Feature[] = [
   { key: "activity_reports", label: "Customer activity and outstanding-credit reports", min: "enhanced" },
   { key: "import", label: "Import existing records from one clean spreadsheet (up to 500 rows)", min: "enhanced" },
   { key: "search_filter", label: "Improved search and filtering", min: "enhanced" },
-  { key: "priority_support", label: "Priority bug-fix support for 60 days after handover", min: "enhanced" },
+  { key: "priority_support", label: "Priority bug-fix support after handover", min: "classic" },
 ];
 
 const rank = (e: Edition) => EDITIONS.indexOf(e);
@@ -101,9 +104,33 @@ export function editionCapabilities(edition: Edition) {
     activityReports: on(CAPS.activityReports),
     import: on(CAPS.import),
     improvedSearch: on(CAPS.improvedSearch),
+    supportDays: EDITION_META[edition].support_days,
+    supportLabel: supportLabel(edition),
   };
 }
 export type EditionCapabilities = ReturnType<typeof editionCapabilities>;
 
 export const isEdition = (v: unknown): v is Edition => EDITIONS.includes(v as Edition);
 export const editionName = (e: Edition) => EDITION_META[e].name;
+
+/** Days of priority bug-fix support the package includes after handover. */
+export const supportDays = (e: Edition) => EDITION_META[e].support_days;
+/** How the support term reads on a pricing page: "30 days", or "None". */
+export const supportLabel = (e: Edition) => (supportDays(e) > 0 ? `${supportDays(e)} days` : "None");
+
+/** Does the package actually grant this feature? Usually that is just the
+ *  edition rank, but the support term is granted per package, so a package that
+ *  starts at Classic can still have zero days. */
+export function hasFeature(f: Feature, e: Edition): boolean {
+  if (f.key === "priority_support") return supportDays(e) > 0;
+  return includes(e, f.min);
+}
+
+/** A feature as it reads for one package. The support term names its own day
+ *  count, which differs by package; every other feature uses the quotation wording. */
+export function featureLabel(f: Feature, e: Edition): string {
+  if (f.key === "priority_support" && supportDays(e) > 0) {
+    return `Priority bug-fix support for ${supportDays(e)} days after handover`;
+  }
+  return f.label;
+}
